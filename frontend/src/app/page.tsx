@@ -1,8 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import type { ChatMessage, ChatRequest, ChatResponse } from "@/types/chat";
+
+const PROMPT_SETS = [
+  [
+    "Who am I?",
+    "What is self-inquiry?",
+    "What does Maya mean?",
+    "I feel unable to quiet my mind.",
+  ],
+  [
+    "What is the nature of the Self?",
+    "What does Advaita mean?",
+    "Is the mind the same as the Self?",
+    "How do I practice self-inquiry in daily life?",
+  ],
+  [
+    "What is meant by the 'I-thought'?",
+    "What is the difference between the ego and the Self?",
+    "What does Turiya mean?",
+    "I keep getting distracted during practice.",
+  ],
+  [
+    "Is there a method to self-inquiry?",
+    "What does it mean to abide as the Self?",
+    "What does Moksha mean?",
+    "I feel like I am making no progress.",
+  ],
+];
+
+const PROMPT_SET_INDEX_KEY = "promptSetIndex";
 
 export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -10,6 +39,22 @@ export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [promptSetIndex, setPromptSetIndex] = useState(0);
+
+  useEffect(() => {
+    // sessionStorage only exists in the browser, so this must run post-mount rather than
+    // during the lazy useState initializer, or server and client would compute different indexes.
+    try {
+      const stored = sessionStorage.getItem(PROMPT_SET_INDEX_KEY);
+      const lastIndex = stored === null ? -1 : Number(stored);
+      const nextIndex = (lastIndex + 1) % PROMPT_SETS.length;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPromptSetIndex(nextIndex);
+      sessionStorage.setItem(PROMPT_SET_INDEX_KEY, String(nextIndex));
+    } catch {
+      setPromptSetIndex(0);
+    }
+  }, []);
 
   async function sendMessage(text: string) {
     setMessages((prev) => [...prev, { role: "user", content: text }]);
@@ -83,6 +128,15 @@ export default function Home() {
           Send
         </button>
       </form>
+      {messages.length === 0 && (
+        <div>
+          {PROMPT_SETS[promptSetIndex].map((prompt) => (
+            <button key={prompt} type="button" onClick={() => setInput(prompt)}>
+              {prompt}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
