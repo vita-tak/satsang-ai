@@ -9,3 +9,4 @@ class SatsangState(MessagesState):
     Inherits messages (conversation history) from MessagesState.
     """
     retrieved_context: Optional[str] = None
+    intent: Optional[str] = None
