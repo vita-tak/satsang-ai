@@ -18,5 +18,5 @@ HAIKU_MODEL = "claude-haiku-4-5-20251001"
 COLLECTION_NAME = "satsang"
 
 # Retrieval
-TOP_K = 8
-RERANK_CANDIDATES = 16
+TOP_K = 5
+RERANK_CANDIDATES = 10
