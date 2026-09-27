@@ -1,16 +1,11 @@
 import json
-import os
 from typing import Optional
 
 import anthropic
-from dotenv import load_dotenv
 from pydantic import BaseModel
 
+from src.config import ANTHROPIC_API_KEY, HAIKU_MODEL
 from src.ingestion.chunker import Chunk
-
-load_dotenv(".env.local")
-
-HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
 QA_PAIR_SYSTEM = (
     "You are a metadata generator for passages from spiritual texts on self-inquiry. "
@@ -83,7 +78,6 @@ def _build_prompt(chunk: Chunk) -> tuple[str, str]:
 
 def _parse_metadata(raw: str, chunk_type: str) -> ChunkMetadata:
     """Parse and validate the JSON response from the model."""
-    # Strip markdown code fences if present
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
@@ -139,7 +133,7 @@ def generate_metadata(
     Returns:
         list of EnrichedChunk objects with metadata attached
     """
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
     target = chunks[:limit] if limit else chunks
     enriched: list[EnrichedChunk] = []

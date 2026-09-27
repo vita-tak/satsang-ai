@@ -1,17 +1,11 @@
 import hashlib
-import os
 from typing import Optional
 
 import chromadb
-from dotenv import load_dotenv
 from openai import OpenAI
 
+from src.config import CHROMA_PERSIST_DIR, COLLECTION_NAME, EMBEDDING_MODEL, OPENAI_API_KEY
 from src.ingestion.metadata_generator import EnrichedChunk
-
-load_dotenv(".env.local")
-
-EMBEDDING_MODEL = "text-embedding-3-small"
-COLLECTION_NAME = "satsang"
 
 
 def _chunk_id(chunk: EnrichedChunk, index: int) -> str:
@@ -27,9 +21,7 @@ def _chunk_id(chunk: EnrichedChunk, index: int) -> str:
 
 def _embed_texts(client: OpenAI, texts: list[str]) -> list[list[float]]:
     """
-    Embed a batch of texts with OpenAI text-embedding-3-small.
-
-    Sends all texts in a single API call for efficiency.
+    Embed and send a batch of texts in a single API call with OpenAI text-embedding-3-small.
     """
     response = client.embeddings.create(
         model=EMBEDDING_MODEL,
@@ -60,24 +52,13 @@ def _build_metadata(chunk: EnrichedChunk) -> dict:
 
 def store_chunks(
     chunks: list[EnrichedChunk],
-    persist_dir: Optional[str] = None,
+    persist_dir: str = CHROMA_PERSIST_DIR,
     batch_size: int = 100,
 ) -> chromadb.Collection:
     """
     Embed and store a list of EnrichedChunks in ChromaDB.
-
-    Args:
-        chunks: enriched chunks with precomputed metadata
-        persist_dir: path to ChromaDB storage directory (defaults to env var)
-        batch_size: number of chunks to embed and insert per API call
-
-    Returns:
-        the ChromaDB collection after insertion
     """
-    if persist_dir is None:
-        persist_dir = os.environ.get("CHROMA_PERSIST_DIR", "./data/chroma")
-
-    openai_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
     chroma_client = chromadb.PersistentClient(path=persist_dir)
     collection = chroma_client.get_or_create_collection(
         name=COLLECTION_NAME,
