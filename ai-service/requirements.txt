@@ -1,9 +1,9 @@
-# Vector DB
-chromadb==0.5.0
-
 # Embeddings + Re-ranking
-openai==1.40.0
+openai==3.19.2
 sentence-transformers==3.0.0
+
+# Vector DB
+chromadb==1.5.9
 
 # LLM
 anthropic==1.8.0
