@@ -1,4 +1,3 @@
-import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
@@ -8,24 +7,20 @@ from pydantic import BaseModel
 from src.config import ANTHROPIC_API_KEY, HAIKU_MODEL
 from src.ingestion.chunker import Chunk
 
-QA_PAIR_SYSTEM = (
-    "You are a metadata generator for passages from spiritual texts on self-inquiry. "
-    "You return only valid JSON with no explanation or markdown."
-)
-
-GLOSSARY_SYSTEM = (
-    "You are a metadata generator for glossary entries from spiritual texts on self-inquiry. "
-    "You return only valid JSON with no explanation or markdown."
+SYSTEM_PROMPT = (
+    "You are a metadata generator for passages from spiritual texts on self-inquiry."
 )
 
 QA_PAIR_PROMPT = """\
-Analyze this passage from "Talks with Sri Ramana Maharshi" and return a JSON object \
-with exactly these fields:
+Analyze this passage from a spiritual text on self-inquiry and generate metadata for it.
 
-- summary: one sentence describing what this passage is about
-- keywords: list of 3-6 specific terms or phrases central to this passage
-- topic_tags: list of 2-4 broader thematic categories (e.g. "self-inquiry", "the mind", "liberation")
-- hypothetical_questions: list of 2-4 questions a seeker might ask that this passage answers
+Reference: {reference}
+
+Passage:
+{text}"""
+
+PASSAGE_PROMPT = """\
+Analyze this introductory passage from a spiritual text on self-inquiry and generate metadata for it.
 
 Reference: {reference}
 
@@ -33,24 +28,67 @@ Passage:
 {text}"""
 
 GLOSSARY_PROMPT = """\
-Analyze this glossary entry from "Talks with Sri Ramana Maharshi" and return a JSON object \
-with exactly these fields:
-
-- summary: one sentence describing what this term means
-- keywords: list of 2-4 terms related to this entry
-- topic_tags: list of 1-3 thematic categories this term belongs to
+Analyze this glossary entry from a spiritual text on self-inquiry and generate metadata for it.
 
 Reference: {reference}
 
 Entry:
 {text}"""
 
+QA_TOOL = {
+    "name": "generate_metadata",
+    "description": "Generate metadata for a passage or Q&A from a spiritual text.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "One sentence describing what this passage is about.",
+            },
+            "keywords": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "3-6 specific terms or phrases central to this passage.",
+            },
+            "topic_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "2-4 broader thematic categories, e.g. 'self-inquiry', 'the mind', 'liberation'.",
+            },
+            "hypothetical_questions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "2-4 questions a seeker might ask that this passage answers.",
+            },
+        },
+        "required": ["summary", "keywords", "topic_tags", "hypothetical_questions"],
+    },
+}
 
-class ChunkMetadata(BaseModel):
-    summary: str
-    keywords: list[str]
-    topic_tags: list[str]
-    hypothetical_questions: Optional[list[str]] = None
+GLOSSARY_TOOL = {
+    "name": "generate_metadata",
+    "description": "Generate metadata for a glossary entry from a spiritual text.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "One sentence describing what this term means.",
+            },
+            "keywords": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "2-4 terms related to this entry.",
+            },
+            "topic_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "1-3 thematic categories this term belongs to.",
+            },
+        },
+        "required": ["summary", "keywords", "topic_tags"],
+    },
+}
 
 
 class EnrichedChunk(BaseModel):
@@ -64,59 +102,46 @@ class EnrichedChunk(BaseModel):
     hypothetical_questions: Optional[list[str]] = None
 
 
-def _build_prompt(chunk: Chunk) -> tuple[str, str]:
-    """Return (system_prompt, user_prompt) for the given chunk type."""
+def _build_request(chunk: Chunk) -> tuple[str, list]:
     if chunk.chunk_type == "qa_pair":
-        return QA_PAIR_SYSTEM, QA_PAIR_PROMPT.format(
-            reference=chunk.reference,
-            text=chunk.text,
-        )
-    return GLOSSARY_SYSTEM, GLOSSARY_PROMPT.format(
-        reference=chunk.reference,
-        text=chunk.text,
-    )
-
-
-def _parse_metadata(raw: str, chunk_type: str) -> ChunkMetadata:
-    """Parse and validate the JSON response from the model."""
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    raw = raw.strip()
-
-    data = json.loads(raw)
-    if chunk_type != "qa_pair":
-        data.pop("hypothetical_questions", None)
-    return ChunkMetadata(**data)
+        prompt = QA_PAIR_PROMPT.format(reference=chunk.reference, text=chunk.text)
+        tool = QA_TOOL
+    elif chunk.chunk_type == "passage":
+        prompt = PASSAGE_PROMPT.format(reference=chunk.reference, text=chunk.text)
+        tool = QA_TOOL
+    else:
+        prompt = GLOSSARY_PROMPT.format(reference=chunk.reference, text=chunk.text)
+        tool = GLOSSARY_TOOL
+    return prompt, [tool]
 
 
 def generate_metadata_for_chunk(
     client: anthropic.Anthropic,
     chunk: Chunk,
 ) -> EnrichedChunk:
-    """Call Claude Haiku and return the chunk enriched with precomputed metadata."""
-    system_prompt, user_prompt = _build_prompt(chunk)
+    prompt, tools = _build_request(chunk)
 
     message = client.messages.create(
         model=HAIKU_MODEL,
         max_tokens=512,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
+        system=SYSTEM_PROMPT,
+        tools=tools,
+        tool_choice={"type": "any"},
+        messages=[{"role": "user", "content": prompt}],
     )
 
-    raw = message.content[0].text.strip()
-    metadata = _parse_metadata(raw, chunk.chunk_type)
+    tool_use = next(b for b in message.content if b.type == "tool_use")
+    data = tool_use.input
 
     return EnrichedChunk(
         text=chunk.text,
         source=chunk.source,
         reference=chunk.reference,
         chunk_type=chunk.chunk_type,
-        summary=metadata.summary,
-        keywords=metadata.keywords,
-        topic_tags=metadata.topic_tags,
-        hypothetical_questions=metadata.hypothetical_questions,
+        summary=data["summary"],
+        keywords=data["keywords"],
+        topic_tags=data["topic_tags"],
+        hypothetical_questions=data.get("hypothetical_questions"),
     )
 
 
