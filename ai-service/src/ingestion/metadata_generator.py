@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 import anthropic
@@ -122,28 +123,37 @@ def generate_metadata_for_chunk(
 def generate_metadata(
     chunks: list[Chunk],
     limit: Optional[int] = None,
+    max_workers: int = 20,
 ) -> list[EnrichedChunk]:
     """
-    Generate precomputed metadata for a list of chunks.
+    Generate precomputed metadata for a list of chunks in parallel.
 
     Args:
         chunks: list of Chunk objects from the chunker
         limit: if set, process only the first N chunks (useful for test runs)
+        max_workers: number of concurrent API calls
 
     Returns:
-        list of EnrichedChunk objects with metadata attached
+        list of EnrichedChunk objects with metadata attached, in original order
     """
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
     target = chunks[:limit] if limit else chunks
-    enriched: list[EnrichedChunk] = []
+    total = len(target)
+    results: dict[int, EnrichedChunk] = {}
 
-    for i, chunk in enumerate(target):
-        print(f"[{i + 1}/{len(target)}] {chunk.reference}")
-        try:
-            enriched.append(generate_metadata_for_chunk(client, chunk))
-        except (json.JSONDecodeError, Exception) as e:
-            print(f"  Error on {chunk.reference}: {e}")
-            continue
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(generate_metadata_for_chunk, client, chunk): i
+            for i, chunk in enumerate(target)
+        }
+        for future in as_completed(futures):
+            i = futures[future]
+            chunk = target[i]
+            try:
+                results[i] = future.result()
+                print(f"[{len(results)}/{total}] {chunk.reference}")
+            except Exception as e:
+                print(f"  Error on {chunk.reference}: {e}")
 
-    return enriched
+    return [results[i] for i in range(total) if i in results]
