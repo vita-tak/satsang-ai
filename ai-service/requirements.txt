@@ -9,8 +9,8 @@ chromadb==1.5.9
 anthropic==1.8.0
 
 # Agent framework
-langgraph==0.2.0
-langchain-core==0.2.0
+langgraph==1.2.12
+langchain-core==1.6.5
 
 # API
 fastapi==0.112.0
