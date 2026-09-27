@@ -1,72 +1,62 @@
-import anthropic
-from langchain_core.messages import AIMessage
 from langgraph.graph import StateGraph, START, END
 
 from src.agent.state import SatsangState
-from src.config import ANTHROPIC_API_KEY, HAIKU_MODEL
+from src.agent.nodes.classify import classify_intent_node
+from src.agent.nodes.retrieve import make_retrieve_node
+from src.agent.nodes.generate import (
+    make_generate_node,
+    guided_inquiry_node,
+    decline_node,
+    SATSANG_SYSTEM,
+    PERSONAL_STRUGGLE_SYSTEM,
+)
 from src.rag.retriever import Retriever
 
-SYSTEM_PROMPT = """\
-You are a guide in the tradition of Ramana Maharshi, helping seekers with \
-the practice of self-inquiry (atma vichara).
 
-Always begin your response by grounding it in a direct quote from the \
-provided passages. You may explain and contextualise the teachings, but \
-never introduce ideas that cannot be traced back to the source texts.
-
-If the passages do not address the question, say so honestly rather than \
-speculating beyond the teachings.
-
-Keep responses concise and contemplative. Avoid spiritual bypassing or \
-empty reassurance. Point always toward direct investigation of the Self."""
-
-
-def _format_context(chunks) -> str:
-    sections = []
-    for chunk in chunks:
-        sections.append(f"[{chunk.reference}]\n{chunk.text}")
-    return "\n\n---\n\n".join(sections)
-
-
-def build_graph(retriever: Retriever) -> StateGraph:
+def build_graph(retriever: Retriever):
     """
-    Build the LangGraph agent, wiring in the provided Retriever instance.
+    Build the LangGraph agent with intent-based routing.
 
-    The retriever is captured in closures so the graph nodes can call it
-    without it being part of the graph state.
+    Flow:
+        classify_intent
+            satsang / definition / personal_struggle -> retrieve -> generate / generate_soft
+            self_inquiry                             -> guided_inquiry
+            off_topic                                -> decline
     """
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-    def retrieve_node(state: SatsangState) -> dict:
-        query = state["messages"][-1].content
-        chunks = retriever.retrieve(query)
-        return {"retrieved_context": _format_context(chunks)}
-
-    def generate_node(state: SatsangState) -> dict:
-        user_query = state["messages"][-1].content
-        context = state["retrieved_context"] or ""
-        user_prompt = f"""\
-Relevant passages from the teachings:
-
-{context}
-
----
-
-Seeker's question: {user_query}"""
-
-        response = client.messages.create(
-            model=HAIKU_MODEL,
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-        answer = response.content[0].text
-        return {"messages": [AIMessage(content=answer)]}
-
     graph = StateGraph(SatsangState)
-    graph.add_node("retrieve", retrieve_node)
-    graph.add_node("generate", generate_node)
-    graph.add_edge(START, "retrieve")
-    graph.add_edge("retrieve", "generate")
+
+    graph.add_node("classify_intent", classify_intent_node)
+    graph.add_node("retrieve", make_retrieve_node(retriever))
+    graph.add_node("generate", make_generate_node(SATSANG_SYSTEM))
+    graph.add_node("generate_soft", make_generate_node(PERSONAL_STRUGGLE_SYSTEM))
+    graph.add_node("guided_inquiry", guided_inquiry_node)
+    graph.add_node("decline", decline_node)
+
+    graph.add_edge(START, "classify_intent")
+
+    # Route to the correct branch based on classified intent
+    graph.add_conditional_edges(
+        "classify_intent",
+        lambda s: s["intent"],
+        {
+            "satsang": "retrieve",
+            "definition": "retrieve",
+            "personal_struggle": "retrieve",
+            "self_inquiry": "guided_inquiry",
+            "off_topic": "decline",
+        },
+    )
+
+    # After retrieval, personal_struggle gets a softer generation prompt
+    graph.add_conditional_edges(
+        "retrieve",
+        lambda s: "generate_soft" if s["intent"] == "personal_struggle" else "generate",
+        {"generate": "generate", "generate_soft": "generate_soft"},
+    )
+
     graph.add_edge("generate", END)
+    graph.add_edge("generate_soft", END)
+    graph.add_edge("guided_inquiry", END)
+    graph.add_edge("decline", END)
+
     return graph.compile()
