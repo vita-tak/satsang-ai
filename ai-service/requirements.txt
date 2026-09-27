@@ -1,0 +1,23 @@
+# Vector DB
+chromadb==0.5.0
+
+# Embeddings + Re-ranking
+openai==1.40.0
+sentence-transformers==3.0.0
+
+# LLM
+anthropic==0.34.0
+
+# Agent framework
+langgraph==0.2.0
+langchain-core==0.2.0
+
+# API
+fastapi==0.112.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.9
+
+# Utilities
+pydantic==2.8.0
+python-dotenv==1.0.0
+httpx==0.27.0

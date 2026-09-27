@@ -1,0 +1,25 @@
+# Virtual environment
+venv/
+
+# Environment variables
+.env
+.env.local
+
+# Vector store
+data/chroma/
+
+# Source documents
+data/sources/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Editor
+.vscode/
+.idea/
+
+# Claude.md
+CLAUDE.md
