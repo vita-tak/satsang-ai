@@ -5,6 +5,7 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
 from src.agent.graph import build_graph
+from src.rag.retriever import Retriever
 
 
 class ChatRequest(BaseModel):
@@ -21,7 +22,8 @@ graph = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global graph
-    graph = build_graph()
+    retriever = Retriever()
+    graph = build_graph(retriever)
     yield
 
 
