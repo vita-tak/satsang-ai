@@ -8,6 +8,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from src.agent.graph import build_graph
+from src.agent.state import Mode
 from src.api.middleware.rate_limit import limiter
 from src.rag.retriever import Retriever
 
@@ -15,6 +16,7 @@ from src.rag.retriever import Retriever
 class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
+    mode: Mode = "teachings"
 
 
 class ChatResponse(BaseModel):
@@ -51,7 +53,8 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponse:
 
     try:
         result = graph.invoke({
-            "messages": history + [HumanMessage(content=body.message)]
+            "messages": history + [HumanMessage(content=body.message)],
+            "mode": body.mode,
         })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
