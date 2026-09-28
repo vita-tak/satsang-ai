@@ -8,7 +8,6 @@ venv/
 
 # Vector store
 # data/chroma/
-# data/chroma/chroma.sqlite3
 
 # Source documents
 data/sources/
