@@ -13,7 +13,7 @@ Ask a question about self-inquiry, Ramana's teachings, or a Sanskrit concept, or
 | Frontend        | Next.js, TypeScript, Bun                            |
 | API             | FastAPI, Python 3.12                                |
 | Agent framework | LangGraph                                           |
-| LLM             | Claude Haiku (classification) + Sonnet (generation) |
+| LLM             | Claude Haiku 4.5 (classification and generation)    |
 | Embeddings      | OpenAI text-embedding-3-small                       |
 | Vector database | ChromaDB                                            |
 | Keyword search  | BM25 via rank-bm25                                  |
@@ -72,7 +72,7 @@ Open `http://localhost:3000`.
 { "message": "Who am I?", "session_id": null, "mode": "satsang" }
 ```
 
-`mode` is optional: `satsang`, `teachings` (default), `ramana` or `self_inquiry`.
+`mode` is optional: `satsang` (default), `teachings`, `ramana` or `self_inquiry`.
 
 Returns:
 
@@ -86,8 +86,8 @@ Pass `session_id` back on subsequent requests to maintain conversation history w
 
 | Mode           | How the guide answers                                                        |
 | -------------- | ---------------------------------------------------------------------------- |
-| `satsang`      | Adaptive: a pointing, a short teaching from the texts, or a direct question, chosen for the seeker in the moment; a long letter gets a brief acknowledgment and one pointing or question |
-| `teachings`    | Quote, explanation, closing question (default)                               |
+| `satsang`      | The guide's own voice, with Ramana's way of seeing absorbed, never quoted or cited; short, usually ending on one question that continues the conversation, sometimes on a pointing; definitions too (default) |
+| `teachings`    | Quote, explanation, closing question                                         |
 | `ramana`       | As Ramana answered: his own words without comment, or a sentence or two in his manner |
 | `self_inquiry` | No teaching: a question or a direct pointing at the seeker, now (no RAG)     |
 
@@ -101,7 +101,7 @@ understood, and writes a standalone search query for retrieval. The mode never a
 | `teaching`   | Questions about the teachings, Self, mind, world     | Mode prompt (RAG, except in Self-inquiry mode)           |
 | `practice`   | Wants guidance in practice, or answers the guide     | Mode prompt (RAG, except in Self-inquiry mode)           |
 | `struggle`   | Shares a personal difficulty                         | Mode prompt (RAG, except in Self-inquiry mode)           |
-| `definition` | Sanskrit term or concept                             | RAG + precise definition, same in every mode             |
+| `definition` | Sanskrit term or concept                             | RAG + precise definition; Satsang in its own voice       |
 | `social`     | Greeting, thanks, goodbye                            | Short reply, no RAG, same in every mode                  |
 | `crisis`     | Possible risk of harm                                | Plain, caring reply pointing to help; no RAG, no quotes  |
 | `off_topic`  | Unrelated to self-inquiry or teachings               | Polite decline                                           |
