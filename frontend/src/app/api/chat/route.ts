@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { DEFAULT_MODE, isResponseMode } from "@/lib/mode";
 import type { ChatRequest, ChatResponse } from "@/types/chat";
 
 function validateMessage(body: Partial<ChatRequest>): string | null {
@@ -8,10 +9,17 @@ function validateMessage(body: Partial<ChatRequest>): string | null {
   return null;
 }
 
+function validateMode(body: Partial<ChatRequest>): string | null {
+  if (body.mode === undefined || isResponseMode(body.mode)) {
+    return null;
+  }
+  return "Unknown response mode.";
+}
+
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as Partial<ChatRequest>;
 
-  const validationError = validateMessage(body);
+  const validationError = validateMessage(body) ?? validateMode(body);
   if (validationError) {
     return NextResponse.json({ detail: validationError }, { status: 400 });
   }
@@ -24,6 +32,7 @@ export async function POST(request: NextRequest) {
   const requestBody: ChatRequest = {
     message: body.message as string,
     session_id: body.session_id ?? crypto.randomUUID(),
+    mode: body.mode ?? DEFAULT_MODE,
   };
 
   try {
