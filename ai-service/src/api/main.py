@@ -2,6 +2,7 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 from slowapi import _rate_limit_exceeded_handler
@@ -28,6 +29,11 @@ graph = None
 # In-memory session store: session_id -> list of LangChain messages
 sessions: dict[str, list] = {}
 
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://satsang-ai.vercel.app",
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,6 +46,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Satsang AI", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["POST"],
+    allow_headers=["Content-Type"],
+)
 
 
 @app.post("/chat", response_model=ChatResponse)
