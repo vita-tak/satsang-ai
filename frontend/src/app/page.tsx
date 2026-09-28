@@ -18,41 +18,155 @@ import type { ResponseMode } from "@/lib/mode";
 import { toggleTheme } from "@/lib/theme";
 import type { ChatMessage, ChatRequest, ChatResponse } from "@/types/chat";
 
-const PROMPT_SETS = [
-  [
-    "Who am I?",
-    "What is self-inquiry?",
-    "What does Maya mean?",
-    "I feel unable to quiet my mind.",
-  ],
-  [
-    "What is the nature of the Self?",
-    "What does Advaita mean?",
-    "Is the mind the same as the Self?",
-    "How do I practice self-inquiry in daily life?",
-  ],
-  [
-    "What is meant by the ‘I-thought’?",
-    "What is the difference between the ego and the Self?",
-    "What does Turiya mean?",
-    "I keep getting distracted during practice.",
-  ],
-  [
-    "Is there a method to self-inquiry?",
-    "What does it mean to abide as the Self?",
-    "What does Moksha mean?",
-    "I feel like I am making no progress.",
-  ],
-];
-
-const PROMPT_SET_INDEX_KEY = "promptSetIndex";
-
 const MODE_COPY: Record<ResponseMode, { label: string; description: string }> = {
   satsang: { label: "Satsang", description: "Whatever you bring, met where you are." },
   teachings: { label: "Teachings", description: "The teachings explained, from the texts." },
   ramana: { label: "Ramana", description: "As Ramana answered: briefly, and back to you." },
   self_inquiry: { label: "Self-inquiry", description: "No teaching. A question for you, now." },
 };
+
+// Four rotating sets of four example questions per mode, in the register of the mode. Each fits
+// on one line from 320px wide, so switching modes or rotating a set never changes the intro's
+// height or moves the toggle.
+const MODE_PROMPT_SETS: Record<ResponseMode, string[][]> = {
+  satsang: [
+    [
+      "Who am I, really?",
+      "I feel lost and don’t know why.",
+      "Is the self an illusion?",
+      "I keep forgetting to practice.",
+    ],
+    [
+      "Why do I suffer?",
+      "My mind won’t quiet down.",
+      "What is awareness, exactly?",
+      "I’m scared of what I might find.",
+    ],
+    [
+      "How do I begin self-inquiry?",
+      "Nothing feels meaningful lately.",
+      "Can I trust what I experience?",
+      "How do I know I’m progressing?",
+    ],
+    [
+      "I can’t stop worrying.",
+      "Am I doing this wrong?",
+      "Where does thought come from?",
+      "This feels too simple to work.",
+    ],
+  ],
+  teachings: [
+    [
+      "What is the nature of the Self?",
+      "Why do thoughts feel so real?",
+      "What does non-duality mean?",
+      "How do I study these teachings?",
+    ],
+    [
+      "What is the ‘I-thought’?",
+      "What is true surrender?",
+      "Is the ego real or illusory?",
+      "Where do I start as a beginner?",
+    ],
+    [
+      "What does Maya mean?",
+      "Is the world truly unreal?",
+      "Can knowledge itself liberate?",
+      "Is inquiry not just meditation?",
+    ],
+    [
+      "What is silent teaching?",
+      "What is the witness?",
+      "Does effort help or hinder?",
+      "What did Ramana say about sleep?",
+    ],
+  ],
+  ramana: [
+    [
+      "How can I control my mind?",
+      "Did you ever feel fear?",
+      "What is silence, really?",
+      "Am I only deluding myself?",
+    ],
+    [
+      "What happens after death?",
+      "How did you wake up so suddenly?",
+      "Is grace real or just a concept?",
+      "What should I actually do each day?",
+    ],
+    [
+      "Do I have free will?",
+      "Was your path unique to you?",
+      "What is the role of the guru?",
+      "How do I deal with doubt?",
+    ],
+    [
+      "How can I help the world?",
+      "What did you mean by ‘Be still’?",
+      "Can a busy life still awaken?",
+      "Is deep sleep close to samadhi?",
+    ],
+  ],
+  self_inquiry: [
+    [
+      "Guide me in self-inquiry now.",
+      "I feel restless — guide me inward.",
+      "What am I, beneath all this noise?",
+      "How do I find the ‘I’?",
+    ],
+    [
+      "My mind is restless right now.",
+      "Where do thoughts arise from?",
+      "Can I do this on my own?",
+      "Something feels off today.",
+    ],
+    [
+      "Where do I look for the ‘I’?",
+      "I keep sliding into thought.",
+      "What happens when I find nothing?",
+      "Is this working? I can’t tell.",
+    ],
+    [
+      "Something feels heavy today.",
+      "I sat still — now what?",
+      "The ‘I’ keeps slipping away.",
+      "Am I the one who is aware?",
+    ],
+  ],
+};
+
+function promptSetStorageKey(mode: ResponseMode): string {
+  return `promptSetIndex_${mode}`;
+}
+
+function readStoredPromptSetIndex(mode: ResponseMode): number {
+  try {
+    const stored = sessionStorage.getItem(promptSetStorageKey(mode));
+    const index = stored === null ? NaN : Number(stored);
+    const setCount = MODE_PROMPT_SETS[mode].length;
+    return Number.isInteger(index) && index >= 0 && index < setCount ? index : -1;
+  } catch {
+    // Storage can be unavailable (private browsing); treated as no stored value yet.
+    return -1;
+  }
+}
+
+function storePromptSetIndex(mode: ResponseMode, index: number) {
+  try {
+    sessionStorage.setItem(promptSetStorageKey(mode), String(index));
+  } catch {
+    // Storage can be unavailable (private browsing); the choice then lasts for this page only.
+  }
+}
+
+// Reads the last index seen for a mode, advances it by one set (wrapping), saves it back, and
+// returns the new value. No stored value yet reads as -1, so the first-ever value is set 0.
+function advanceStoredPromptSetIndex(mode: ResponseMode): number {
+  const setCount = MODE_PROMPT_SETS[mode].length;
+  const nextIndex = (readStoredPromptSetIndex(mode) + 1) % setCount;
+  storePromptSetIndex(mode, nextIndex);
+  return nextIndex;
+}
 
 const MODE_DESCRIPTION_ID = "response-mode-description";
 
@@ -173,8 +287,8 @@ export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [promptSetIndex, setPromptSetIndex] = useState(0);
   const [mode, setMode] = useState<ResponseMode>(DEFAULT_MODE);
+  const [promptSetIndex, setPromptSetIndex] = useState(0);
   const [hasIntroLeft, setHasIntroLeft] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const latestQuestionRef = useRef<HTMLParagraphElement>(null);
@@ -184,25 +298,13 @@ export default function Home() {
   const exchanges = toExchanges(messages);
 
   useEffect(() => {
-    // sessionStorage only exists in the browser, so this must run post-mount rather than
-    // during the lazy useState initializer, or server and client would compute different indexes.
-    try {
-      const stored = sessionStorage.getItem(PROMPT_SET_INDEX_KEY);
-      const lastIndex = stored === null ? -1 : Number(stored);
-      const nextIndex = (lastIndex + 1) % PROMPT_SETS.length;
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setPromptSetIndex(nextIndex);
-      sessionStorage.setItem(PROMPT_SET_INDEX_KEY, String(nextIndex));
-    } catch {
-      setPromptSetIndex(0);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Read post-mount for the same reason as the prompt rotation above; the intro is still
-    // fading in, so the switch from the default is never seen.
+    // sessionStorage only exists in the browser, so this must run post-mount rather than in a lazy
+    // useState initializer, or server and client would render different modes. The intro is still
+    // fading in, so the switch from the default mode and its questions is never seen.
+    const storedMode = readStoredMode();
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMode(readStoredMode());
+    setMode(storedMode);
+    setPromptSetIndex(advanceStoredPromptSetIndex(storedMode));
   }, []);
 
   useEffect(() => {
@@ -280,6 +382,11 @@ export default function Home() {
   function chooseMode(nextMode: ResponseMode) {
     setMode(nextMode);
     storeMode(nextMode);
+    setPromptSetIndex(advanceStoredPromptSetIndex(nextMode));
+  }
+
+  function rotatePrompts() {
+    setPromptSetIndex(advanceStoredPromptSetIndex(mode));
   }
 
   function rememberViewHeight() {
@@ -312,8 +419,10 @@ export default function Home() {
               {exchanges.length === 0 ? (
                 <Intro
                   key="intro"
-                  prompts={PROMPT_SETS[promptSetIndex]}
+                  mode={mode}
+                  promptSetIndex={promptSetIndex}
                   onChoose={choosePrompt}
+                  onRotate={rotatePrompts}
                   composer={composer}
                 />
               ) : (
@@ -372,12 +481,14 @@ function ThemeToggle() {
 }
 
 interface IntroProps {
-  prompts: string[];
+  mode: ResponseMode;
+  promptSetIndex: number;
   onChoose: (prompt: string) => void;
+  onRotate: () => void;
   composer: ReactNode;
 }
 
-function Intro({ prompts, onChoose, composer }: IntroProps) {
+function Intro({ mode, promptSetIndex, onChoose, onRotate, composer }: IntroProps) {
   return (
     <motion.section
       variants={introStagger}
@@ -400,16 +511,48 @@ function Intro({ prompts, onChoose, composer }: IntroProps) {
         {composer}
       </motion.div>
       <motion.div variants={riseIn} className="mt-10">
-        <p className="font-serif text-note text-ink-faint italic">Or begin with</p>
-        <ul className="mt-2">
-          {prompts.map((prompt) => (
+        <div className="flex items-center justify-between">
+          <p className="font-serif text-note text-ink-faint italic">Or begin with</p>
+          <RotatePromptsButton onClick={onRotate} />
+        </div>
+        {/* Keyed by mode and set, so a new mode's questions or a rotated set fade in together. */}
+        <motion.ul
+          key={`${mode}-${promptSetIndex}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4, ease: EASE_BREATH }}
+          className="mt-2"
+        >
+          {MODE_PROMPT_SETS[mode][promptSetIndex].map((prompt) => (
             <li key={prompt}>
               <PromptRow prompt={prompt} onChoose={onChoose} />
             </li>
           ))}
-        </ul>
+        </motion.ul>
       </motion.div>
     </motion.section>
+  );
+}
+
+function RotatePromptsButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Show different example questions"
+      className="-mr-3 grid size-11 shrink-0 cursor-pointer place-items-center text-ink-faint transition-colors duration-500 ease-breath hover:text-ink"
+    >
+      <svg viewBox="0 0 20 20" className="size-3" aria-hidden="true">
+        <path
+          d="M15.5 10a5.5 5.5 0 1 1-1.94-4.2M15.5 3.5v3.5h-3.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
   );
 }
 
