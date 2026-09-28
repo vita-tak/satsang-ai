@@ -1,90 +1,69 @@
 import anthropic
 from langchain_core.messages import AIMessage
 
+from src.agent.nodes.prompts import (
+    DECLINE_MESSAGE,
+    PASSAGES_GUIDE,
+    closing_reminder,
+    system_prompt,
+)
 from src.agent.state import SatsangState
 from src.config import ANTHROPIC_API_KEY, HAIKU_MODEL
 
-SATSANG_SYSTEM = """\
-You are a guide in the tradition of Ramana Maharshi, helping seekers with \
-the practice of self-inquiry (atma vichara).
-
-Always begin by grounding your response in a direct quote from the provided passages. \
-You may explain and contextualise the teachings, but never introduce ideas that \
-cannot be traced back to the source texts.
-
-Keep responses concise and contemplative. Point always toward direct investigation \
-of the Self. End with a single follow-up question that invites the seeker to go deeper."""
-
-PERSONAL_STRUGGLE_SYSTEM = """\
-You are a compassionate guide in the tradition of Ramana Maharshi, \
-sitting with a seeker who is sharing a difficulty or pain.
-
-Begin by acknowledging what has been shared. Then, gently offer a passage \
-from the teachings that speaks to their situation. Never dismiss the struggle. \
-End with a single open question that invites the seeker to be with their own experience."""
-
-GUIDED_INQUIRY_SYSTEM = """\
-You are guiding a seeker in the direct practice of self-inquiry in the \
-tradition of Ramana Maharshi.
-
-Do not quote from texts. Work only with what the seeker has shared. \
-Give a direct pointing toward the investigation of 'Who am I?' \
-Use simple, clear language. End with a single question that points them inward."""
-
-DECLINE_MESSAGE = (
-    "This is a space for self-inquiry and the teachings of Ramana Maharshi. "
-    "I am not able to help with that here. "
-    "Is there something about the practice or the teachings you would like to explore?"
-)
-
-
-def _rag_prompt(state: SatsangState) -> str:
-    """Build the user prompt that combines retrieved context with the seeker's question."""
-    return (
-        f"Relevant passages from the teachings:\n\n{state['retrieved_context']}\n\n"
-        f"---\n\nSeeker's question: {state['messages'][-1].content}"
-    )
+# The last five exchanges. Earlier turns come in pairs, so the window starts with the seeker.
+HISTORY_LIMIT = 10
 
 
 def _history(state: SatsangState) -> list[dict]:
-    """Convert conversation history to Anthropic message format."""
+    """Recent earlier turns in Anthropic message format, without the new message."""
+    earlier = state["messages"][:-1][-HISTORY_LIMIT:]
     return [
         {"role": "user" if m.type == "human" else "assistant", "content": m.content}
-        for m in state["messages"]
+        for m in earlier
     ]
 
 
-def make_generate_node(system_prompt: str):
+def _rag_prompt(state: SatsangState) -> str:
     """
-    Factory that returns a generate node for RAG-based responses.
-    Used for satsang, definition, and personal_struggle intents.
+    Build the user turn that combines the retrieved passages with the seeker's new message,
+    closed by the mode's reminder when it has one.
     """
-    def generate_node(state: SatsangState) -> dict:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        response = client.messages.create(
-            model=HAIKU_MODEL,
-            max_tokens=1024,
-            system=system_prompt,
-            messages=[{"role": "user", "content": _rag_prompt(state)}],
-        )
-        return {"messages": [AIMessage(content=response.content[0].text)]}
-
-    return generate_node
+    prompt = (
+        f"{PASSAGES_GUIDE}\n\n"
+        f"Passages:\n\n{state['retrieved_context']}\n\n"
+        f"---\n\nThe seeker's message: {state['messages'][-1].content}"
+    )
+    reminder = closing_reminder(state["mode"], state["intent"])
+    return f"{prompt}\n\n---\n\n{reminder}" if reminder else prompt
 
 
-def guided_inquiry_node(state: SatsangState) -> dict:
-    """
-    Direct self-inquiry guidance. No RAG -- works with conversation history only,
-    so the guide can track where the seeker is in the practice within this session.
-    """
+def _complete(system: str, messages: list[dict], max_tokens: int) -> str:
+    """Send one request to Claude and return the text of its answer."""
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     response = client.messages.create(
         model=HAIKU_MODEL,
-        max_tokens=512,
-        system=GUIDED_INQUIRY_SYSTEM,
-        messages=_history(state),
+        max_tokens=max_tokens,
+        system=system,
+        messages=messages,
     )
-    return {"messages": [AIMessage(content=response.content[0].text)]}
+    return response.content[0].text
+
+
+def generate_node(state: SatsangState) -> dict:
+    """Answer with the retrieved passages, in the form the mode and intent call for."""
+    system = system_prompt(state["mode"], state["intent"])
+    messages = _history(state) + [{"role": "user", "content": _rag_prompt(state)}]
+    return {"messages": [AIMessage(content=_complete(system, messages, max_tokens=1024))]}
+
+
+def generate_direct_node(state: SatsangState) -> dict:
+    """
+    Answer from the conversation alone, without retrieval. Used by Self-inquiry mode,
+    which quotes nothing, and by the social and crisis answers of every mode.
+    """
+    system = system_prompt(state["mode"], state["intent"])
+    messages = _history(state) + [{"role": "user", "content": state["messages"][-1].content}]
+    return {"messages": [AIMessage(content=_complete(system, messages, max_tokens=512))]}
 
 
 def decline_node(state: SatsangState) -> dict:
