@@ -1,24 +1,23 @@
 # Satsang AI
 
-A contemplative chat interface for self-inquiry in the tradition of Ramana Maharshi. Ask questions about the teachings, get guided in the practice of self-inquiry, or explore Sanskrit terms and concepts.
+A contemplative chat interface for self-inquiry in the tradition of Ramana Maharshi.
 
 ## What it does
 
-Ask a question about self-inquiry, Ramana's teachings, or a Sanskrit concept, or write a longer letter about your practice. You choose how the guide answers (one of four response modes, below); the system classifies what your message is doing and routes it: RAG-grounded answers from the texts, direct guidance without retrieval in Self-inquiry mode, precise definitions for Sanskrit terms, and a plain, caring reply that points to help when a message suggests risk of harm.
+Ask a question about the teachings, describe something you're struggling with, or write a longer letter about your practice. The system classifies what your message is doing and routes it accordingly: RAG-grounded answers from the source texts, direct guidance in Self-inquiry mode, precise definitions for Sanskrit terms, and a plain, caring reply when a message suggests risk of harm. You choose how the guide answers through one of four response modes.
 
 ## Tech stack
 
-| Component       | Technology                                          |
-| --------------- | --------------------------------------------------- |
-| Frontend        | Next.js, TypeScript, Bun                            |
-| API             | FastAPI, Python 3.12                                |
-| Agent framework | LangGraph                                           |
-| LLM             | Claude Haiku 4.5 (classification and generation)    |
-| Embeddings      | OpenAI text-embedding-3-small                       |
-| Vector database | ChromaDB                                            |
-| Keyword search  | BM25 via rank-bm25                                  |
-| Re-ranking      | sentence-transformers CrossEncoder                  |
-| Rate limiting   | slowapi (10 requests/minute per IP)                 |
+| Component       | Technology                         |
+| --------------- | ---------------------------------- |
+| Frontend        | Next.js, TypeScript, Bun           |
+| API             | FastAPI, Python 3.12               |
+| Agent framework | LangGraph                          |
+| LLM             | Claude Haiku 4.5                   |
+| Embeddings      | OpenAI text-embedding-3-small      |
+| Vector database | ChromaDB                           |
+| Keyword search  | BM25 via rank-bm25                 |
+| Re-ranking      | sentence-transformers CrossEncoder |
 
 ## Project structure
 
@@ -36,11 +35,9 @@ satsang-ai/
 
 ## Running locally
 
-### Prerequisites
+**Prerequisites:** Python 3.12+, Bun, Anthropic API key, OpenAI API key
 
-Python 3.12+, Bun, Anthropic API key, OpenAI API key
-
-### Backend
+**Backend**
 
 ```bash
 cd ai-service
@@ -54,7 +51,7 @@ uvicorn src.api.main:app --reload
 
 The ChromaDB vector store is included in the repo and ready to use. API docs at `http://localhost:8000/docs`.
 
-### Frontend
+**Frontend**
 
 ```bash
 cd frontend
@@ -72,36 +69,6 @@ Open `http://localhost:3000`.
 { "message": "Who am I?", "session_id": null, "mode": "satsang" }
 ```
 
-`mode` is optional: `satsang` (default), `teachings`, `ramana` or `self_inquiry`.
+`mode` is optional: `satsang` (default), `teachings`, `self_inquiry`, or `ramana`.
 
-Returns:
-
-```json
-{ "response": "...", "session_id": "abc-123" }
-```
-
-Pass `session_id` back on subsequent requests to maintain conversation history within a session.
-
-## Response modes
-
-| Mode           | How the guide answers                                                        |
-| -------------- | ---------------------------------------------------------------------------- |
-| `satsang`      | The guide's own voice, with Ramana's way of seeing absorbed, never quoted or cited; short, usually ending on one question that continues the conversation, sometimes on a pointing; definitions too (default) |
-| `teachings`    | Quote, explanation, closing question                                         |
-| `ramana`       | As Ramana answered: his own words without comment, or a sentence or two in his manner |
-| `self_inquiry` | No teaching: a question or a direct pointing at the seeker, now (no RAG)     |
-
-## Intent routing
-
-The classifier sees the guide's previous reply, so short answers to the guide's questions are
-understood, and writes a standalone search query for retrieval. The mode never affects it.
-
-| Intent       | Trigger                                              | Handler                                                  |
-| ------------ | ---------------------------------------------------- | -------------------------------------------------------- |
-| `teaching`   | Questions about the teachings, Self, mind, world     | Mode prompt (RAG, except in Self-inquiry mode)           |
-| `practice`   | Wants guidance in practice, or answers the guide     | Mode prompt (RAG, except in Self-inquiry mode)           |
-| `struggle`   | Shares a personal difficulty                         | Mode prompt (RAG, except in Self-inquiry mode)           |
-| `definition` | Sanskrit term or concept                             | RAG + precise definition; Satsang in its own voice       |
-| `social`     | Greeting, thanks, goodbye                            | Short reply, no RAG, same in every mode                  |
-| `crisis`     | Possible risk of harm                                | Plain, caring reply pointing to help; no RAG, no quotes  |
-| `off_topic`  | Unrelated to self-inquiry or teachings               | Polite decline                                           |
+Pass `session_id` back on subsequent requests to maintain conversation history.
