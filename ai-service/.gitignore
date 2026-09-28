@@ -7,7 +7,7 @@ venv/
 .env.local
 
 # Vector store
-data/chroma/
+# data/chroma/
 
 # Source documents
 data/sources/
