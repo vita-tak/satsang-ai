@@ -16,7 +16,7 @@ from src.rag.retriever import Retriever
 class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
-    mode: Mode = "teachings"
+    mode: Mode = "satsang"
 
 
 class ChatResponse(BaseModel):

@@ -18,4 +18,4 @@ class SatsangState(MessagesState):
     retrieved_context: Optional[str] = None
     intent: Optional[Intent] = None
     search_query: Optional[str] = None
-    mode: Mode = "teachings"
+    mode: Mode = "satsang"
