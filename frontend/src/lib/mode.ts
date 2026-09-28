@@ -1,8 +1,8 @@
-export const RESPONSE_MODES = ["satsang", "teachings", "ramana", "self_inquiry"] as const;
+export const RESPONSE_MODES = ["satsang", "teachings", "self_inquiry", "ramana"] as const;
 
 export type ResponseMode = (typeof RESPONSE_MODES)[number];
 
-export const DEFAULT_MODE: ResponseMode = "teachings";
+export const DEFAULT_MODE: ResponseMode = "satsang";
 
 // sessionStorage rather than localStorage, so a new browser session starts from the default again.
 const MODE_STORAGE_KEY = "responseMode";
