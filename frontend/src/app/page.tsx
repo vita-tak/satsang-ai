@@ -1,10 +1,20 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent, ReactNode, RefObject } from "react";
+import { Children, isValidElement, memo, useEffect, useRef, useState } from "react";
+import type {
+  ComponentProps,
+  FormEvent,
+  KeyboardEvent,
+  ReactElement,
+  ReactNode,
+  RefObject,
+} from "react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion";
 import type { Transition, Variants } from "framer-motion";
 import Markdown from "react-markdown";
+import type { Components, ExtraProps } from "react-markdown";
+import { DEFAULT_MODE, RESPONSE_MODES, readStoredMode, storeMode } from "@/lib/mode";
+import type { ResponseMode } from "@/lib/mode";
 import { toggleTheme } from "@/lib/theme";
 import type { ChatMessage, ChatRequest, ChatResponse } from "@/types/chat";
 
@@ -36,6 +46,15 @@ const PROMPT_SETS = [
 ];
 
 const PROMPT_SET_INDEX_KEY = "promptSetIndex";
+
+const MODE_COPY: Record<ResponseMode, { label: string; description: string }> = {
+  satsang: { label: "Satsang", description: "Whatever you bring, met where you are." },
+  teachings: { label: "Teachings", description: "The teachings explained, from the texts." },
+  ramana: { label: "Ramana", description: "As Ramana answered: briefly, and back to you." },
+  self_inquiry: { label: "Self-inquiry", description: "No teaching. A question for you, now." },
+};
+
+const MODE_DESCRIPTION_ID = "response-mode-description";
 
 const EASE_BREATH = [0.37, 0, 0.63, 1] as const;
 
@@ -79,8 +98,65 @@ function withTypographicQuotes(text: string): string {
     .replace(/'/g, "\u2019");
 }
 
+// A final question mark, allowing closing emphasis, quotes or brackets after it.
+const QUESTION_ENDING = /\?[*_"'\u201d\u2019)\]]*$/;
+
+function endsOnQuestion(markdown: string): boolean {
+  const lines = markdown.trimEnd().split("\n");
+  const lastLine = lines[lines.length - 1].trim();
+  // A quote is his, not the guide's closing: an answer that ends inside a blockquote gets no point.
+  if (lastLine.startsWith(">")) {
+    return false;
+  }
+  return QUESTION_ENDING.test(lastLine);
+}
+
+// Where a quote comes from, as the guide writes it: "Talk 107", "Be As You Are, Ch. 5",
+// "Be As You Are, chapter 16". The whole paragraph must be the reference, not just start like one.
+const TALK_REFERENCE = /^(Talks with Sri Ramana Maharshi, )?Talk \d+$/;
+const BOOK_REFERENCE = /^Be As You Are(, (Ch\.|chapter) \d+.*)?$/;
+const REFERENCE_MAX_LENGTH = 80;
+
+function isQuoteReference(text: string): boolean {
+  let reference = text.trim().replace(/\.$/, "");
+  if (reference.startsWith("(") && reference.endsWith(")")) {
+    reference = reference.slice(1, -1);
+  }
+  if (reference.length > REFERENCE_MAX_LENGTH) {
+    return false;
+  }
+  return TALK_REFERENCE.test(reference) || BOOK_REFERENCE.test(reference);
+}
+
+type MarkdownNode = NonNullable<ExtraProps["node"]>;
+type MarkdownChild = MarkdownNode["children"][number];
+
+function textContent(node: MarkdownChild): string {
+  if (node.type === "text") {
+    return node.value;
+  }
+  if (node.type === "element") {
+    return node.children.map(textContent).join("");
+  }
+  return "";
+}
+
 function isTouchScreen(): boolean {
   return window.matchMedia("(pointer: coarse)").matches;
+}
+
+// On a touch screen the keyboard is still closing when a sent question is scrolled into view, so
+// the view's height from before it opened is the one to judge by.
+function viewHeightWithoutKeyboard(heightBeforeKeyboard: number): number {
+  return isTouchScreen() && heightBeforeKeyboard > 0 ? heightBeforeKeyboard : window.innerHeight;
+}
+
+// Pinned to the top, a question keeps "Answering" in view only if it fits between its scroll
+// margins; the bottom margin leaves room for "Answering" above the composer and its fade.
+function isTallerThanView(question: HTMLElement, viewHeight: number): boolean {
+  const { scrollMarginTop, scrollMarginBottom } = getComputedStyle(question);
+  const room = viewHeight - parseFloat(scrollMarginTop) - parseFloat(scrollMarginBottom);
+  return question.offsetHeight > room;
 }
 
 function submitOnEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -98,9 +174,11 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [promptSetIndex, setPromptSetIndex] = useState(0);
+  const [mode, setMode] = useState<ResponseMode>(DEFAULT_MODE);
   const [hasIntroLeft, setHasIntroLeft] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const latestQuestionRef = useRef<HTMLParagraphElement>(null);
+  const viewHeightBeforeKeyboardRef = useRef(0);
   const prefersReducedMotion = useReducedMotion();
 
   const exchanges = toExchanges(messages);
@@ -121,11 +199,31 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    latestQuestionRef.current?.scrollIntoView({
-      block: "start",
+    // Read post-mount for the same reason as the prompt rotation above; the intro is still
+    // fading in, so the switch from the default is never seen.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMode(readStoredMode());
+  }, []);
+
+  useEffect(() => {
+    // Runs for each new question, and once more when the intro has left, since only then does the
+    // first question mount. A question is pinned to the top; one too long to keep "Answering" in
+    // view there, such as a letter, is scrolled to its end instead. A short first question stays
+    // where it lands.
+    const question = latestQuestionRef.current;
+    if (!question) {
+      return;
+    }
+    const viewHeight = viewHeightWithoutKeyboard(viewHeightBeforeKeyboardRef.current);
+    const isLong = isTallerThanView(question, viewHeight);
+    if (exchanges.length === 1 && !isLong) {
+      return;
+    }
+    question.scrollIntoView({
+      block: isLong ? "end" : "start",
       behavior: prefersReducedMotion ? "auto" : "smooth",
     });
-  }, [exchanges.length, prefersReducedMotion]);
+  }, [exchanges.length, hasIntroLeft, prefersReducedMotion]);
 
   useEffect(() => {
     if (hasIntroLeft && !isTouchScreen()) {
@@ -139,7 +237,7 @@ export default function Home() {
     setError(null);
 
     try {
-      const requestBody: ChatRequest = { message: text, session_id: sessionId };
+      const requestBody: ChatRequest = { message: text, session_id: sessionId, mode };
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -179,14 +277,29 @@ export default function Home() {
     inputRef.current?.focus();
   }
 
+  function chooseMode(nextMode: ResponseMode) {
+    setMode(nextMode);
+    storeMode(nextMode);
+  }
+
+  function rememberViewHeight() {
+    // Focus comes before the on-screen keyboard opens, so this is the full height of the view.
+    viewHeightBeforeKeyboardRef.current = window.innerHeight;
+  }
+
+  // The mode toggle travels with the composer: inline in the intro, pinned to the bottom after.
   const composer = (
-    <Composer
-      value={input}
-      canSubmit={!isLoading && input.trim() !== ""}
-      inputRef={inputRef}
-      onChange={setInput}
-      onSubmit={handleSubmit}
-    />
+    <>
+      <Composer
+        value={input}
+        canSubmit={!isLoading && input.trim() !== ""}
+        inputRef={inputRef}
+        onChange={setInput}
+        onFocus={rememberViewHeight}
+        onSubmit={handleSubmit}
+      />
+      <ModeToggle mode={mode} isQuiet={hasIntroLeft} onChange={chooseMode} />
+    </>
   );
 
   return (
@@ -363,7 +476,7 @@ function ExchangeView({ exchange, isPending, error, questionRef }: ExchangeViewP
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8, ease: EASE_BREATH }}
-        className="scroll-mt-8 whitespace-pre-wrap break-words text-body text-ink-soft sm:text-body-lg"
+        className="scroll-mt-8 scroll-mb-56 whitespace-pre-wrap break-words text-body text-ink-soft sm:text-body-lg"
       >
         {exchange.question}
       </motion.p>
@@ -386,10 +499,44 @@ function ExchangeView({ exchange, isPending, error, questionRef }: ExchangeViewP
   );
 }
 
-const Answer = memo(function Answer({ content }: { content: string }) {
+// When a quote's last paragraph is its reference, the reference moves out of the quote into the
+// figure's caption, where HTML puts attribution: it is the page's citation, not his words.
+function Quote({ node, children }: ComponentProps<"blockquote"> & ExtraProps) {
+  const elements = node?.children.filter((child) => child.type === "element") ?? [];
+  const last = elements[elements.length - 1];
+  const endsOnReference =
+    elements.length >= 2 &&
+    last.type === "element" &&
+    last.tagName === "p" &&
+    isQuoteReference(textContent(last));
+  if (!endsOnReference) {
+    return <blockquote>{children}</blockquote>;
+  }
+  // react-markdown renders the node's children in order, so the last element is that paragraph.
+  const parts = Children.toArray(children);
+  const referenceIndex = parts.findLastIndex(isValidElement);
+  const reference = parts[referenceIndex] as ReactElement<{ children?: ReactNode }>;
   return (
-    <motion.div variants={riseIn} initial="hidden" animate="visible" className="answer mt-5">
-      <Markdown>{withTypographicQuotes(content)}</Markdown>
+    <figure>
+      <blockquote>{parts.filter((_, index) => index !== referenceIndex)}</blockquote>
+      <figcaption>{reference.props.children}</figcaption>
+    </figure>
+  );
+}
+
+const MARKDOWN_COMPONENTS: Components = { blockquote: Quote };
+
+const Answer = memo(function Answer({ content }: { content: string }) {
+  const isQuestionEnding = endsOnQuestion(content);
+  return (
+    <motion.div
+      variants={riseIn}
+      initial="hidden"
+      animate="visible"
+      data-ends-on-question={isQuestionEnding ? "" : undefined}
+      className="answer mt-5"
+    >
+      <Markdown components={MARKDOWN_COMPONENTS}>{withTypographicQuotes(content)}</Markdown>
     </motion.div>
   );
 });
@@ -412,10 +559,11 @@ interface ComposerProps {
   canSubmit: boolean;
   inputRef: RefObject<HTMLTextAreaElement | null>;
   onChange: (value: string) => void;
+  onFocus: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }
 
-function Composer({ value, canSubmit, inputRef, onChange, onSubmit }: ComposerProps) {
+function Composer({ value, canSubmit, inputRef, onChange, onFocus, onSubmit }: ComposerProps) {
   return (
     <form onSubmit={onSubmit}>
       <div className="mx-auto flex w-full max-w-measure items-end gap-4 border-b border-rule transition-colors duration-500 ease-breath focus-within:border-accent">
@@ -429,6 +577,7 @@ function Composer({ value, canSubmit, inputRef, onChange, onSubmit }: ComposerPr
           rows={1}
           value={value}
           onChange={(event) => onChange(event.target.value)}
+          onFocus={onFocus}
           onKeyDown={submitOnEnter}
           autoComplete="off"
           placeholder="Ask a question…"
@@ -444,5 +593,78 @@ function Composer({ value, canSubmit, inputRef, onChange, onSubmit }: ComposerPr
         </button>
       </div>
     </form>
+  );
+}
+
+interface ModeToggleProps {
+  mode: ResponseMode;
+  isQuiet: boolean;
+  onChange: (mode: ResponseMode) => void;
+}
+
+function ModeToggle({ mode, isQuiet, onChange }: ModeToggleProps) {
+  return (
+    <fieldset
+      aria-describedby={isQuiet ? undefined : MODE_DESCRIPTION_ID}
+      className="mx-auto mt-1 w-full max-w-measure"
+    >
+      <legend className="sr-only">How the guide answers</legend>
+      {/* Four labels need 317px with 24px gaps: the gap narrows below 375px and wraps below 353px. */}
+      <div className="flex flex-wrap gap-x-5 min-[375px]:gap-x-6">
+        {RESPONSE_MODES.map((option) => (
+          <ModeOption
+            key={option}
+            mode={option}
+            isSelected={option === mode}
+            isQuiet={isQuiet}
+            onChange={onChange}
+          />
+        ))}
+      </div>
+      {isQuiet ? null : (
+        <motion.p
+          key={mode}
+          id={MODE_DESCRIPTION_ID}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4, ease: EASE_BREATH }}
+          className="font-serif text-note text-ink-faint italic"
+        >
+          {MODE_COPY[mode].description}
+        </motion.p>
+      )}
+    </fieldset>
+  );
+}
+
+interface ModeOptionProps {
+  mode: ResponseMode;
+  isSelected: boolean;
+  isQuiet: boolean;
+  onChange: (mode: ResponseMode) => void;
+}
+
+function ModeOption({ mode, isSelected, isQuiet, onChange }: ModeOptionProps) {
+  // Selection is marked by the underline in both states; only the intro also gives it full ink.
+  // The outline colour is set at rest (invisible without an outline style), so focus shows the ember
+  // ring at once instead of easing to it from the ink colour with the colour transition.
+  const colorClass = isSelected && !isQuiet ? "text-ink" : "text-ink-faint";
+  const underlineClass = isSelected ? "decoration-current" : "decoration-transparent";
+  return (
+    <label className="group inline-flex min-h-11 min-w-11 cursor-pointer items-center">
+      <input
+        type="radio"
+        name="response-mode"
+        value={mode}
+        checked={isSelected}
+        onChange={() => onChange(mode)}
+        className="peer sr-only"
+      />
+      <span
+        className={`${colorClass} ${underlineClass} whitespace-nowrap text-note underline decoration-1 underline-offset-4 outline-accent outline-offset-4 transition-colors duration-500 ease-breath group-hover:text-ink peer-focus-visible:text-ink peer-focus-visible:outline-1`}
+      >
+        {MODE_COPY[mode].label}
+      </span>
+    </label>
   );
 }

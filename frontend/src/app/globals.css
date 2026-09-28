@@ -90,9 +90,13 @@
     background-color: var(--ground);
   }
 
-  /* Keeps focused elements clear of the sticky composer when the browser scrolls them into view. */
-  html {
-    scroll-padding-bottom: 7rem;
+  /*
+   * Keeps focused content clear of the sticky composer when the browser scrolls it into view. Set on
+   * the content instead of as scroll padding on the page, so focusing the composer or the mode
+   * toggle, which are always in view, never scrolls the page and never hides the pinned question.
+   */
+  main * {
+    scroll-margin-bottom: 10rem;
   }
 
   button {
@@ -141,6 +145,15 @@
     margin-top: 0.8em;
   }
 
+  /* A quote's source, set outside the quote as the page's citation, not his words. */
+  .answer figcaption {
+    margin-top: 0.75em;
+    /* The quote's 1.25em indent, measured at the caption's smaller size, so the two align. */
+    padding-left: calc(1.25em / 0.8);
+    font-size: 0.8em;
+    color: var(--ink-faint);
+  }
+
   .answer strong {
     font-weight: 600;
   }
@@ -181,17 +194,21 @@
     text-underline-offset: 0.2em;
   }
 
-  /* Every answer ends on a question for the seeker: set it apart, with the ember point in the margin. */
-  .answer > p:last-child:not(:first-child) {
+  /*
+   * When an answer ends on a question for the seeker, set it apart, with the ember point in the
+   * margin. Answers that end on a statement, an instruction or one of his quotes come to rest as
+   * they are (page.tsx marks question endings with data-ends-on-question).
+   */
+  .answer[data-ends-on-question] > p:last-child:not(:first-child) {
     position: relative;
     margin-top: 2em;
   }
 
-  .answer > p:last-child:not(:first-child) strong {
+  .answer[data-ends-on-question] > p:last-child:not(:first-child) strong {
     font-weight: inherit;
   }
 
-  .answer > p:last-child:not(:first-child)::before {
+  .answer[data-ends-on-question] > p:last-child:not(:first-child)::before {
     content: "";
     position: absolute;
     top: 0.78em;
