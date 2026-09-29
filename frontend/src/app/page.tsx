@@ -16,6 +16,8 @@ import type { Components, ExtraProps } from "react-markdown";
 import { DEFAULT_MODE, RESPONSE_MODES, readStoredMode, storeMode } from "@/lib/mode";
 import type { ResponseMode } from "@/lib/mode";
 import { toggleTheme } from "@/lib/theme";
+import { useVoiceInput, useVoiceShortcut } from "@/lib/voice";
+import type { VoiceStatus } from "@/lib/voice";
 import type { ChatMessage, ChatRequest, ChatResponse } from "@/types/chat";
 
 const MODE_COPY: Record<ResponseMode, { label: string; description: string }> = {
@@ -707,35 +709,182 @@ interface ComposerProps {
 }
 
 function Composer({ value, canSubmit, inputRef, onChange, onFocus, onSubmit }: ComposerProps) {
+  const voice = useVoiceInput({ fieldRef: inputRef, value, onChange });
+  useVoiceShortcut({
+    fieldRef: inputRef,
+    isEnabled: voice.isSupported,
+    status: voice.status,
+    onToggle: voice.toggle,
+  });
+  const isVoiceActive = voice.status !== "idle";
   return (
     <form onSubmit={onSubmit}>
       <div className="mx-auto flex w-full max-w-measure items-end gap-4 border-b border-rule transition-colors duration-500 ease-breath focus-within:border-accent">
         <label htmlFor="question" className="sr-only">
           Your question
         </label>
-        <textarea
-          id="question"
-          name="question"
-          ref={inputRef}
-          rows={1}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          onFocus={onFocus}
-          onKeyDown={submitOnEnter}
-          autoComplete="off"
-          placeholder="Ask a question…"
-          enterKeyHint="send"
-          className="field-sizing-content max-h-[40dvh] min-w-0 flex-1 resize-none bg-transparent py-3 text-body text-ink caret-accent sm:text-body-lg placeholder:text-ink-faint focus:outline-none"
-        />
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className="min-h-11 min-w-11 shrink-0 cursor-pointer text-right text-label text-accent uppercase decoration-1 underline-offset-4 transition-colors duration-500 ease-breath enabled:hover:underline disabled:cursor-default disabled:text-ink-faint"
+        {/* While the voice writes, SpokenWords draws the field's text under it so arriving words can fade in. */}
+        <div
+          className={`relative isolate flex min-w-0 flex-1 ${isVoiceActive ? "[&>textarea]:text-transparent" : ""}`}
         >
-          Ask
-        </button>
+          <textarea
+            id="question"
+            name="question"
+            ref={inputRef}
+            rows={1}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            onFocus={onFocus}
+            onKeyDown={submitOnEnter}
+            autoComplete="off"
+            placeholder="Ask a question…"
+            enterKeyHint="send"
+            className="field-sizing-content max-h-[40dvh] min-w-0 flex-1 resize-none bg-transparent py-3 text-body text-ink caret-accent sm:text-body-lg placeholder:text-ink-faint focus:outline-none"
+          />
+          {isVoiceActive ? <SpokenWords text={value} fieldRef={inputRef} /> : null}
+        </div>
+        <div className="flex shrink-0">
+          {voice.isSupported ? <MicButton status={voice.status} onClick={voice.toggle} /> : null}
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="min-h-11 min-w-11 shrink-0 cursor-pointer text-right text-label text-accent uppercase decoration-1 underline-offset-4 transition-colors duration-500 ease-breath enabled:hover:underline disabled:cursor-default disabled:text-ink-faint"
+          >
+            Ask
+          </button>
+        </div>
       </div>
+      <p role="status" className="sr-only">
+        {voice.status === "recording" ? "Listening" : ""}
+      </p>
+      {voice.notice ? <VoiceNotice message={voice.notice} /> : null}
     </form>
+  );
+}
+
+// Idle and processing are quiet ink; recording is ember, with the capsule filled so the state does
+// not rest on colour or motion alone. Processing keeps the breath of "Answering" while the last
+// words arrive.
+const MIC_COLOR: Record<VoiceStatus, string> = {
+  idle: "text-ink-faint hover:text-ink",
+  recording: "text-accent",
+  processing: "text-ink-faint",
+};
+
+interface MicButtonProps {
+  status: VoiceStatus;
+  onClick: () => void;
+}
+
+function MicButton({ status, onClick }: MicButtonProps) {
+  const isRecording = status === "recording";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Speak your question"
+      aria-pressed={isRecording}
+      aria-keyshortcuts="Control+Shift+V"
+      className={`${MIC_COLOR[status]} grid size-11 shrink-0 cursor-pointer place-items-center transition-colors duration-500 ease-breath`}
+    >
+      {/* The pulse is on the wrapper, not the SVG or the button, so the focus ring stays steady. */}
+      <span className={status === "idle" ? "block" : "block animate-breathe"}>
+        <svg viewBox="0 0 20 20" className="size-4.5" aria-hidden="true">
+          <rect
+            x="7.25"
+            y="2"
+            width="5.5"
+            height="9.5"
+            rx="2.75"
+            fill={isRecording ? "currentColor" : "none"}
+            stroke="currentColor"
+            strokeWidth="1.25"
+          />
+          <path
+            d="M4.5 9.5a5.5 5.5 0 0 0 11 0M10 15v3M7.25 18h5.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.25"
+            strokeLinecap="round"
+          />
+        </svg>
+      </span>
+    </button>
+  );
+}
+
+const WORD_FADE: Transition = { duration: 0.5, ease: EASE_BREATH };
+
+interface SpokenWordsProps {
+  text: string;
+  fieldRef: RefObject<HTMLTextAreaElement | null>;
+}
+
+// A textarea cannot animate single words, so while the voice writes, the field's own text is hidden
+// and the same text is set here, behind it, one word at a time. Its type, padding and width must equal
+// the textarea's, so that the words wrap and sit exactly where the field's own text does. It is a
+// scroller like the field, and copies the field's scroll position, so a long dictation lines up too.
+// It sits below the textarea (the wrapper is a stacking context for that): above a scroller the
+// browser would give it a layer of its own, and its text would be drawn lighter than the field's.
+// Words already in the field when recording starts stay still. A word that arrives fades in; one
+// that is revised in place changes without blinking, because its key is its position.
+function SpokenWords({ text, fieldRef }: SpokenWordsProps) {
+  const tokens = text.match(/\s+|\S+/g) ?? [];
+  const [settledCount] = useState(tokens.length);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // The field decides where the text is scrolled (it follows the newest words); this copies it.
+    const overlay = overlayRef.current;
+    const field = fieldRef.current;
+    if (!overlay || !field) {
+      return;
+    }
+    const follow = () => {
+      overlay.scrollTop = field.scrollTop;
+    };
+    follow();
+    field.addEventListener("scroll", follow);
+    return () => field.removeEventListener("scroll", follow);
+  }, [fieldRef]);
+
+  return (
+    // overflow-anchor: none, because scroll anchoring would pull the overlay off the position it
+    // copies whenever its words change.
+    <div
+      ref={overlayRef}
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0 -z-10 overflow-y-auto py-3 text-body break-words whitespace-pre-wrap text-ink sm:text-body-lg [overflow-anchor:none] [scrollbar-color:transparent_transparent]"
+    >
+      {tokens.map((token, index) =>
+        /^\s/.test(token) ? (
+          token
+        ) : (
+          <motion.span
+            key={index}
+            initial={index < settledCount ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={WORD_FADE}
+          >
+            {token}
+          </motion.span>
+        ),
+      )}
+    </div>
+  );
+}
+
+function VoiceNotice({ message }: { message: string }) {
+  return (
+    <motion.p
+      role="alert"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4, ease: EASE_BREATH }}
+      className="mx-auto mt-2 w-full max-w-measure text-note text-error"
+    >
+      {message}
+    </motion.p>
   );
 }
 
