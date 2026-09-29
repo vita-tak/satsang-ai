@@ -45,7 +45,7 @@ type SpeechWindow = Window & {
 
 const BLOCKED_NOTICE =
   "Microphone access is blocked. Allow it in your browser or device settings to speak.";
-const UNAVAILABLE_NOTICE = "Voice input is not available right now.";
+const UNAVAILABLE_NOTICE = "Voice input is not available right now";
 
 // The seeker or the browser said no to the microphone or to speech recognition.
 const BLOCKED_ERRORS = ["not-allowed", "service-not-allowed"];
@@ -56,7 +56,7 @@ function noticeFor(error: string): string | null {
   if (BLOCKED_ERRORS.includes(error)) {
     return BLOCKED_NOTICE;
   }
-  return QUIET_ERRORS.includes(error) ? null : UNAVAILABLE_NOTICE;
+  return QUIET_ERRORS.includes(error) ? null : `${UNAVAILABLE_NOTICE} (${error})`;
 }
 
 function getRecognizerConstructor(): RecognizerConstructor | undefined {
