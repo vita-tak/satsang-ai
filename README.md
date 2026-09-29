@@ -18,6 +18,7 @@ Ask a question about the teachings, describe something you're struggling with, o
 | Vector database | ChromaDB                           |
 | Keyword search  | BM25 via rank-bm25                 |
 | Re-ranking      | sentence-transformers CrossEncoder |
+| Speech-to-text  | Web Speech API                     |
 
 ## Project structure
 
