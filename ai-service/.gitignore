@@ -22,8 +22,12 @@ __pycache__/
 .vscode/
 .idea/
 
-# Claude.md
+# Claude
 CLAUDE.md
+.agents/
+.claude/
+skills-lock.json
 
-# Agent working notes (IMPLEMENTATION.md, PROGRESS.md)
+# Internal documentation
+IMPLEMENTATION.md
 /docu

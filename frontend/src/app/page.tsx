@@ -9,15 +9,15 @@ import type {
   ReactNode,
   RefObject,
 } from "react";
-import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, MotionConfig, animate, motion, useReducedMotion } from "framer-motion";
 import type { Transition, Variants } from "framer-motion";
 import Markdown from "react-markdown";
 import type { Components, ExtraProps } from "react-markdown";
 import { DEFAULT_MODE, RESPONSE_MODES, readStoredMode, storeMode } from "@/lib/mode";
 import type { ResponseMode } from "@/lib/mode";
+import { appendTranscript, useDictation } from "@/lib/dictation";
+import type { DictationStatus } from "@/lib/dictation";
 import { toggleTheme } from "@/lib/theme";
-import { useVoiceInput, useVoiceShortcut } from "@/lib/voice";
-import type { VoiceStatus } from "@/lib/voice";
 import type { ChatMessage, ChatRequest, ChatResponse } from "@/types/chat";
 
 const MODE_COPY: Record<ResponseMode, { label: string; description: string }> = {
@@ -708,43 +708,80 @@ interface ComposerProps {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }
 
+const TRANSCRIPT_FADE: Transition = { duration: 0.6, ease: EASE_BREATH };
+
+// The field is made clear first: the new text is drawn on the next frame, before the animation's
+// own first frame, and would show for that frame at full strength.
+function fadeIn(element: HTMLElement) {
+  element.style.opacity = "0";
+  animate(element, { opacity: [0, 1] }, TRANSCRIPT_FADE);
+}
+
+const PLACEHOLDER: Record<DictationStatus, string> = {
+  idle: "Ask a question…",
+  recording: "Listening…",
+  transcribing: "Transcribing…",
+};
+
+// Read out by screen readers; the placeholder above is only there while the field is empty.
+const ANNOUNCEMENT: Record<DictationStatus, string> = {
+  idle: "",
+  recording: "Listening",
+  transcribing: "Transcribing",
+};
+
 function Composer({ value, canSubmit, inputRef, onChange, onFocus, onSubmit }: ComposerProps) {
-  const voice = useVoiceInput({ fieldRef: inputRef, value, onChange });
-  useVoiceShortcut({
-    fieldRef: inputRef,
-    isEnabled: voice.isSupported,
-    status: voice.status,
-    onToggle: voice.toggle,
+  const dictation = useDictation({
+    onTranscript: (text) => {
+      // A textarea cannot fade part of its text, so the words fade in only when they are all there is.
+      const isFieldEmpty = value.trim() === "";
+      onChange(appendTranscript(value, text));
+      if (isFieldEmpty && inputRef.current) {
+        fadeIn(inputRef.current);
+      }
+      if (!isTouchScreen()) {
+        inputRef.current?.focus();
+      }
+    },
   });
-  const isVoiceActive = voice.status !== "idle";
+
+  // Sending takes over from a recording or a transcript still on its way: the field as it is goes.
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (canSubmit) {
+      dictation.cancel();
+    }
+    onSubmit(event);
+  }
+
+  function handleChange(text: string) {
+    dictation.dismissNotice();
+    onChange(text);
+  }
+
   return (
-    <form onSubmit={onSubmit}>
+    <form onSubmit={handleSubmit}>
       <div className="mx-auto flex w-full max-w-measure items-end gap-4 border-b border-rule transition-colors duration-500 ease-breath focus-within:border-accent">
         <label htmlFor="question" className="sr-only">
           Your question
         </label>
-        {/* While the voice writes, SpokenWords draws the field's text under it so arriving words can fade in. */}
-        <div
-          className={`relative isolate flex min-w-0 flex-1 ${isVoiceActive ? "[&>textarea]:text-transparent" : ""}`}
-        >
-          <textarea
-            id="question"
-            name="question"
-            ref={inputRef}
-            rows={1}
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            onFocus={onFocus}
-            onKeyDown={submitOnEnter}
-            autoComplete="off"
-            placeholder="Ask a question…"
-            enterKeyHint="send"
-            className="field-sizing-content max-h-[40dvh] min-w-0 flex-1 resize-none bg-transparent py-3 text-body text-ink caret-accent sm:text-body-lg placeholder:text-ink-faint focus:outline-none"
-          />
-          {isVoiceActive ? <SpokenWords text={value} fieldRef={inputRef} /> : null}
-        </div>
+        <textarea
+          id="question"
+          name="question"
+          ref={inputRef}
+          rows={1}
+          value={value}
+          onChange={(event) => handleChange(event.target.value)}
+          onFocus={onFocus}
+          onKeyDown={submitOnEnter}
+          autoComplete="off"
+          placeholder={PLACEHOLDER[dictation.status]}
+          enterKeyHint="send"
+          className="field-sizing-content max-h-[40dvh] min-w-0 flex-1 resize-none bg-transparent py-3 text-body text-ink caret-accent sm:text-body-lg placeholder:text-ink-faint focus:outline-none"
+        />
         <div className="flex shrink-0">
-          {voice.isSupported ? <MicButton status={voice.status} onClick={voice.toggle} /> : null}
+          {dictation.isSupported ? (
+            <MicButton status={dictation.status} onClick={dictation.toggle} />
+          ) : null}
           <button
             type="submit"
             disabled={!canSubmit}
@@ -755,24 +792,24 @@ function Composer({ value, canSubmit, inputRef, onChange, onFocus, onSubmit }: C
         </div>
       </div>
       <p role="status" className="sr-only">
-        {voice.status === "recording" ? "Listening" : ""}
+        {ANNOUNCEMENT[dictation.status]}
       </p>
-      {voice.notice ? <VoiceNotice message={voice.notice} /> : null}
+      {dictation.notice ? <DictationNotice message={dictation.notice} /> : null}
     </form>
   );
 }
 
-// Idle and processing are quiet ink; recording is ember, with the capsule filled so the state does
-// not rest on colour or motion alone. Processing keeps the breath of "Answering" while the last
-// words arrive.
-const MIC_COLOR: Record<VoiceStatus, string> = {
+// Idle is quiet ink; recording is ember, with the capsule filled so the state does not rest on
+// colour or motion alone. Transcribing is quiet ink again and breathes like "Answering" while the
+// words are on their way.
+const MIC_COLOR: Record<DictationStatus, string> = {
   idle: "text-ink-faint hover:text-ink",
   recording: "text-accent",
-  processing: "text-ink-faint",
+  transcribing: "text-ink-faint",
 };
 
 interface MicButtonProps {
-  status: VoiceStatus;
+  status: DictationStatus;
   onClick: () => void;
 }
 
@@ -784,7 +821,7 @@ function MicButton({ status, onClick }: MicButtonProps) {
       onClick={onClick}
       aria-label="Speak your question"
       aria-pressed={isRecording}
-      aria-keyshortcuts="Control+Shift+V"
+      aria-disabled={status === "transcribing"}
       className={`${MIC_COLOR[status]} grid size-11 shrink-0 cursor-pointer place-items-center transition-colors duration-500 ease-breath`}
     >
       {/* The pulse is on the wrapper, not the SVG or the button, so the focus ring stays steady. */}
@@ -813,68 +850,7 @@ function MicButton({ status, onClick }: MicButtonProps) {
   );
 }
 
-const WORD_FADE: Transition = { duration: 0.5, ease: EASE_BREATH };
-
-interface SpokenWordsProps {
-  text: string;
-  fieldRef: RefObject<HTMLTextAreaElement | null>;
-}
-
-// A textarea cannot animate single words, so while the voice writes, the field's own text is hidden
-// and the same text is set here, behind it, one word at a time. Its type, padding and width must equal
-// the textarea's, so that the words wrap and sit exactly where the field's own text does. It is a
-// scroller like the field, and copies the field's scroll position, so a long dictation lines up too.
-// It sits below the textarea (the wrapper is a stacking context for that): above a scroller the
-// browser would give it a layer of its own, and its text would be drawn lighter than the field's.
-// Words already in the field when recording starts stay still. A word that arrives fades in; one
-// that is revised in place changes without blinking, because its key is its position.
-function SpokenWords({ text, fieldRef }: SpokenWordsProps) {
-  const tokens = text.match(/\s+|\S+/g) ?? [];
-  const [settledCount] = useState(tokens.length);
-  const overlayRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    // The field decides where the text is scrolled (it follows the newest words); this copies it.
-    const overlay = overlayRef.current;
-    const field = fieldRef.current;
-    if (!overlay || !field) {
-      return;
-    }
-    const follow = () => {
-      overlay.scrollTop = field.scrollTop;
-    };
-    follow();
-    field.addEventListener("scroll", follow);
-    return () => field.removeEventListener("scroll", follow);
-  }, [fieldRef]);
-
-  return (
-    // overflow-anchor: none, because scroll anchoring would pull the overlay off the position it
-    // copies whenever its words change.
-    <div
-      ref={overlayRef}
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-0 -z-10 overflow-y-auto py-3 text-body break-words whitespace-pre-wrap text-ink sm:text-body-lg [overflow-anchor:none] [scrollbar-color:transparent_transparent]"
-    >
-      {tokens.map((token, index) =>
-        /^\s/.test(token) ? (
-          token
-        ) : (
-          <motion.span
-            key={index}
-            initial={index < settledCount ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={WORD_FADE}
-          >
-            {token}
-          </motion.span>
-        ),
-      )}
-    </div>
-  );
-}
-
-function VoiceNotice({ message }: { message: string }) {
+function DictationNotice({ message }: { message: string }) {
   return (
     <motion.p
       role="alert"

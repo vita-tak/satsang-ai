@@ -42,6 +42,11 @@ next-env.d.ts
 
 # Claude
 CLAUDE.md
+.agents/
+.claude/skills/
+skills-lock.json
+
+# Internal documentation
 IMPLEMENTATION.md
 /docu
 

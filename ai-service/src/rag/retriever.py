@@ -90,6 +90,22 @@ class Retriever:
 
         print(f"Retriever ready: {len(self._corpus_documents)} documents indexed")
 
+    def glossary_entries(self) -> list[str]:
+        """The text of every glossary entry chunk, read from the existing collection."""
+        found = self._collection.get(
+            where={"chunk_type": "glossary_entry"},
+            include=["documents"],
+        )
+        return found["documents"]
+
+    def text_chunks(self) -> list[str]:
+        """The text of every chunk that is not a glossary entry, from the corpus held in memory."""
+        return [
+            document
+            for document, metadata in zip(self._corpus_documents, self._corpus_metadatas)
+            if metadata["chunk_type"] != "glossary_entry"
+        ]
+
     def _vector_search(self, query: str, n: int) -> list[dict]:
         """Embed query and return top-n hits from ChromaDB."""
         embedding = (

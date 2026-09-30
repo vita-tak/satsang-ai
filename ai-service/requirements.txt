@@ -2,6 +2,7 @@
 openai==3.19.2
 sentence-transformers==6.1.0
 rank-bm25==0.2.2
+tokenizers==0.23.2
 
 # Vector DB
 chromadb==1.5.9
