@@ -17,6 +17,8 @@ import { DEFAULT_MODE, RESPONSE_MODES, readStoredMode, storeMode } from "@/lib/m
 import type { ResponseMode } from "@/lib/mode";
 import { appendTranscript, useDictation } from "@/lib/dictation";
 import type { DictationStatus } from "@/lib/dictation";
+import { readSpokenAnswer, useSpeech } from "@/lib/speech";
+import type { Speech } from "@/lib/speech";
 import { toggleTheme } from "@/lib/theme";
 import type { ChatMessage, ChatRequest, ChatResponse } from "@/types/chat";
 
@@ -283,6 +285,36 @@ function submitOnEnter(event: KeyboardEvent<HTMLTextAreaElement>) {
   }
 }
 
+type ShowAnswer = (content: string, sessionId: string) => void;
+
+async function receivePlain(requestBody: ChatRequest, showAnswer: ShowAnswer) {
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!res.ok) {
+    const errorBody = await res.json();
+    throw new Error(errorBody.detail ?? "Failed to send message.");
+  }
+
+  const data: ChatResponse = await res.json();
+  showAnswer(data.response, data.session_id);
+}
+
+// The answer is shown when its text arrives, which is when the first sound does too.
+async function receiveSpoken(requestBody: ChatRequest, speech: Speech, showAnswer: ShowAnswer) {
+  const signal = speech.beginRequest();
+  await readSpokenAnswer(requestBody, signal, {
+    onText: (event) => {
+      showAnswer(event.response, event.session_id);
+      speech.textShown();
+    },
+    onAudio: speech.push,
+  });
+}
+
 export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -296,6 +328,7 @@ export default function Home() {
   const latestQuestionRef = useRef<HTMLParagraphElement>(null);
   const viewHeightBeforeKeyboardRef = useRef(0);
   const prefersReducedMotion = useReducedMotion();
+  const speech = useSpeech();
 
   const exchanges = toExchanges(messages);
 
@@ -340,26 +373,28 @@ export default function Home() {
     setIsLoading(true);
     setError(null);
 
+    let hasAnswer = false;
+    // The answer ends the wait. With the speaker on its audio is still arriving after this.
+    function showAnswer(content: string, answerSessionId: string) {
+      hasAnswer = true;
+      setSessionId(answerSessionId);
+      setMessages((prev) => [...prev, { role: "assistant", content }]);
+      setIsLoading(false);
+    }
+
     try {
       const requestBody: ChatRequest = { message: text, session_id: sessionId, mode };
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!res.ok) {
-        const errorBody = await res.json();
-        throw new Error(errorBody.detail ?? "Failed to send message.");
+      if (speech.isOn) {
+        await receiveSpoken(requestBody, speech, showAnswer);
+      } else {
+        await receivePlain(requestBody, showAnswer);
       }
-
-      const data: ChatResponse = await res.json();
-      setSessionId(data.session_id);
-      setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setIsLoading(false);
+      // Once the answer is on the page, a failure of its audio is not reported: the text is there.
+      if (!hasAnswer) {
+        setError(err instanceof Error ? err.message : "Something went wrong.");
+        setIsLoading(false);
+      }
     }
   }
 
@@ -372,6 +407,11 @@ export default function Home() {
     setInput("");
     if (isTouchScreen()) {
       inputRef.current?.blur();
+    }
+    // A new question ends the answer still being read, and a tap is what lets the next one play.
+    speech.stop();
+    if (speech.isOn) {
+      speech.prime();
     }
     sendMessage(trimmed);
   }
@@ -402,7 +442,9 @@ export default function Home() {
       <Composer
         value={input}
         canSubmit={!isLoading && input.trim() !== ""}
+        isSpeakerOn={speech.isOn}
         inputRef={inputRef}
+        onToggleSpeaker={speech.toggle}
         onChange={setInput}
         onFocus={rememberViewHeight}
         onSubmit={handleSubmit}
@@ -702,7 +744,9 @@ function Pending() {
 interface ComposerProps {
   value: string;
   canSubmit: boolean;
+  isSpeakerOn: boolean;
   inputRef: RefObject<HTMLTextAreaElement | null>;
+  onToggleSpeaker: () => void;
   onChange: (value: string) => void;
   onFocus: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -730,7 +774,16 @@ const ANNOUNCEMENT: Record<DictationStatus, string> = {
   transcribing: "Transcribing",
 };
 
-function Composer({ value, canSubmit, inputRef, onChange, onFocus, onSubmit }: ComposerProps) {
+function Composer({
+  value,
+  canSubmit,
+  isSpeakerOn,
+  inputRef,
+  onToggleSpeaker,
+  onChange,
+  onFocus,
+  onSubmit,
+}: ComposerProps) {
   const dictation = useDictation({
     onTranscript: (text) => {
       // A textarea cannot fade part of its text, so the words fade in only when they are all there is.
@@ -779,6 +832,7 @@ function Composer({ value, canSubmit, inputRef, onChange, onFocus, onSubmit }: C
           className="field-sizing-content max-h-[40dvh] min-w-0 flex-1 resize-none bg-transparent py-3 text-body text-ink caret-accent sm:text-body-lg placeholder:text-ink-faint focus:outline-none"
         />
         <div className="flex shrink-0">
+          <SpeakerButton isOn={isSpeakerOn} onClick={onToggleSpeaker} />
           {dictation.isSupported ? (
             <MicButton status={dictation.status} onClick={dictation.toggle} />
           ) : null}
@@ -796,6 +850,37 @@ function Composer({ value, canSubmit, inputRef, onChange, onFocus, onSubmit }: C
       </p>
       {dictation.notice ? <DictationNotice message={dictation.notice} /> : null}
     </form>
+  );
+}
+
+// Off is quiet ink with a cross where the sound would be; on is full ink with sound waves, so the
+// state does not rest on colour alone. Ember stays with the microphone.
+function SpeakerButton({ isOn, onClick }: { isOn: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Read answers aloud"
+      aria-pressed={isOn}
+      className={`${isOn ? "text-ink" : "text-ink-faint hover:text-ink"} grid size-11 shrink-0 cursor-pointer place-items-center transition-colors duration-500 ease-breath`}
+    >
+      <svg viewBox="0 0 20 20" className="size-4.5" aria-hidden="true">
+        <path
+          d="M3 7.75h2.75L10 4.25v11.5l-4.25-3.5H3z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.25"
+          strokeLinejoin="round"
+        />
+        <path
+          d={isOn ? "M12.5 7.5a3.5 3.5 0 0 1 0 5M14.75 5.25a6.5 6.5 0 0 1 0 9.5" : "M13 8l4 4M17 8l-4 4"}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.25"
+          strokeLinecap="round"
+        />
+      </svg>
+    </button>
   );
 }
 
