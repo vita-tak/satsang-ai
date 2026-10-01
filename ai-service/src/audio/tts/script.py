@@ -15,14 +15,18 @@ _INLINE_TAG = re.compile(r"<([^<>]+)>")
 GEMINI_TAGS = ("short pause", "breath")
 LONG_PAUSE = "long pause"
 LONG_PAUSE_AS_SENT = "... ..."
+# A long pause set as its own paragraph reached Gemini as "\n\n... ...\n\n" and gave 3 to 10 s of
+# silence (six cases), against 1.2 to 1.7 s for the same ellipsis after a sentence, so it is
+# joined to the sentence before it.
+_BEFORE_LONG_PAUSE = re.compile(r"\s+(?=<\s*long pause\s*>)", re.IGNORECASE)
 _WORD = re.compile(r"[\w'’-]+")
 
 
 class VoiceScript(BaseModel):
     """
-    What the speech model is given: the answer's words, with the pauses placed in the text,
-    and one sentence on how the whole answer should sound. The voice director fills the
-    field descriptions in for Claude as its tool schema, so they are written for it.
+    What the speech model is given: the answer's words, with the pauses placed in the text.
+    The voice director fills the field description in for Claude as its tool schema, so it
+    is written for it.
     """
 
     text: str = Field(
@@ -30,10 +34,6 @@ class VoiceScript(BaseModel):
             "The answer's own words, unchanged and in the same order, as plain text, with "
             "inline tags where the delivery needs a pause or a breath."
         )
-    )
-    style: str = Field(
-        default="",
-        description="One short sentence in plain English on how the whole answer should sound.",
     )
 
 
@@ -44,14 +44,15 @@ class AudioChunk(BaseModel):
 
 
 def plain_script(answer: str) -> VoiceScript:
-    """The answer spoken as it stands: markdown marks removed, no pauses, no style."""
+    """The answer spoken as it stands: markdown marks removed, no pauses."""
     return VoiceScript(text=_MARKDOWN_MARKS.sub("", answer).strip())
 
 
 def sanitize_tags(text: str) -> str:
     """
     The director's text as Gemini should receive it: the tags Gemini plays are kept in their
-    exact spelling, a `<long pause>` becomes an ellipsis, and every other <...> tag is removed.
+    exact spelling, a `<long pause>` becomes an ellipsis joined to the sentence before it, and
+    every other <...> tag is removed.
     """
     def fix(match: re.Match[str]) -> str:
         name = match.group(1).strip().lower()
@@ -59,7 +60,8 @@ def sanitize_tags(text: str) -> str:
             return f"<{name}>"
         return LONG_PAUSE_AS_SENT if name == LONG_PAUSE else ""
 
-    return re.sub(r" {2,}", " ", _INLINE_TAG.sub(fix, text)).strip()
+    joined = _BEFORE_LONG_PAUSE.sub(" ", text)
+    return re.sub(r" {2,}", " ", _INLINE_TAG.sub(fix, joined)).strip()
 
 
 def spoken_words(text: str) -> list[str]:

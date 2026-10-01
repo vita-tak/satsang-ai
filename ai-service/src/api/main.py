@@ -14,6 +14,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from src.agent.graph import build_graph, build_speech_graph
+from src.agent.nodes.prompts import VOICE_STYLE
 from src.agent.state import Mode
 from src.api.middleware.rate_limit import limiter
 from src.api.spoken import spoken_events
@@ -75,7 +76,7 @@ async def lifespan(app: FastAPI):
     graph = build_graph(retriever)
     app.state.speech_graph = build_speech_graph(
         anthropic.Anthropic(api_key=ANTHROPIC_API_KEY),
-        Speaker(genai.Client(api_key=GOOGLE_API_KEY)),
+        Speaker(genai.Client(api_key=GOOGLE_API_KEY), VOICE_STYLE),
     )
     app.state.transcriber = build_transcriber(retriever)
     yield

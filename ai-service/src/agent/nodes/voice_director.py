@@ -26,9 +26,9 @@ def make_voice_director_node(client: anthropic.Anthropic):
     """
     Factory that captures the Anthropic client, built once at startup, in a closure.
 
-    The director may place pauses and choose a style but never change a word. If the words
-    differ, or the call fails, the answer is spoken as it stands: the wording of a crisis
-    reply, or of a passage, must reach the listener exactly as written.
+    The director may place pauses but never change a word. If the words differ, or the call
+    fails, the answer is spoken as it stands: the wording of a crisis reply, or of a passage,
+    must reach the listener exactly as written.
     """
     def voice_director_node(state: SatsangState) -> dict:
         answer = state["messages"][-1].content

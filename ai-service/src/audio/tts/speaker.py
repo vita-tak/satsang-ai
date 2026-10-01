@@ -18,11 +18,13 @@ class SpeechError(Exception):
 
 class Speaker:
     """
-    Turns a voice script into streamed audio with Gemini. Instantiate once at startup.
+    Turns a voice script into streamed audio with Gemini, every answer in the same voice and
+    style. Instantiate once at startup.
     """
 
-    def __init__(self, client: genai.Client) -> None:
+    def __init__(self, client: genai.Client, style: str) -> None:
         self._client = client
+        self._style = style
 
     def stream(self, script: VoiceScript) -> Iterator[AudioChunk]:
         """
@@ -33,7 +35,7 @@ class Speaker:
         """
         events = self._client.interactions.create(
             model=TTS_MODEL,
-            input=[_text_block(script)],
+            input=[_text_block(script.text, self._style)],
             response_format={
                 "type": "audio",
                 "mime_type": TTS_AUDIO_FORMAT,
@@ -57,19 +59,20 @@ class Speaker:
             raise SpeechError("No audio in the speech stream.")
 
 
-def _text_block(script: VoiceScript) -> dict:
+def _text_block(text: str, style: str) -> dict:
     """
-    The script as one text block. Its style is a speech annotation over the whole text; the
+    The text as one text block, with the style as a speech annotation over all of it; the
     annotation's indices count bytes, not characters.
     """
-    block: dict = {"type": "text", "text": script.text}
-    if script.style:
-        block["annotations"] = [
+    return {
+        "type": "text",
+        "text": text,
+        "annotations": [
             {
                 "type": "speech_metadata",
-                "style": script.style,
+                "style": style,
                 "start_index": 0,
-                "end_index": len(script.text.encode("utf-8")),
+                "end_index": len(text.encode("utf-8")),
             }
-        ]
-    return block
+        ],
+    }

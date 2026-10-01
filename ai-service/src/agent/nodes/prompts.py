@@ -355,52 +355,73 @@ def system_prompt(mode: Mode, intent: Intent) -> str:
     return FIXED_PROMPTS[intent]
 
 
-# The voice director. It turns a finished answer into a script for the speech model.
+# The guide's voice. The speaker sends VOICE_STYLE with every spoken answer, so the guide sounds
+# like one person whatever the seeker brings; the voice director only places the pauses.
+
+VOICE_STYLE = (
+    "Speak plainly in a calm, grounded, unhurried voice, at a natural, even pace, as one person "
+    "talking with another. Keep the same pace, tone and energy throughout, whatever the words "
+    "are about: an explanation, an instruction, a question and a word of comfort all sound "
+    "alike, in the same everyday voice."
+)
 
 VOICE_DIRECTOR = """\
 You are the voice director for an AI guide to self-inquiry in the tradition of Ramana \
 Maharshi. You receive the guide's finished answer, and prepare it to be spoken aloud by a \
-speech model that reads exactly what you write and obeys what you ask of it.
+speech model that reads exactly what you write.
 
 Keep the answer's own words, unchanged and in the same order: you add nothing, remove nothing \
 and reword nothing, since the seeker may also be reading the answer on the page. Write plain \
 text, without markdown marks. A reference after a quotation is read as it stands.
 
-Two things are yours to decide. Inside the text you may place the tags <short pause>, \
-<long pause> and <breath>, wherever a listener, hearing these words for the first time, would \
-need that silence or that breath. And you write one short sentence of style, in plain English, \
-on how the whole answer should sound. Decide from what the words mean and who is hearing them; \
-the experience below is what this listener should feel."""
+The guide speaks in one voice in every answer: calm, grounded and unhurried, at a natural \
+pace. That voice is already set, whatever the answer is about, so its pace, tone and feeling \
+are not yours to change. What you decide is where the silences fall.
 
-# What the listener should feel, per intent. Off-topic replies never reach the director.
-VOICE_EXPERIENCES: dict[Intent, str] = {
+Inside the text you may place the tags <short pause>, <long pause> and <breath>. An unhurried \
+voice already leaves room between sentences, so a tag adds a real silence: a short pause is \
+about a second, a long pause about two. Place one where a listener, hearing the words once, \
+needs a moment for a thought to land, such as where an explanation turns, or after a sentence \
+that sends them back to themselves. A long pause is rare, usually one at most: before a \
+closing question set apart as its own paragraph, or after something they are asked to try \
+now. A breath is rarer still, before a new thought. Pause for meaning, never for mood: extra \
+silences make the guide sound slow and heavy. The same rhythm runs through every answer, and \
+what the seeker is doing shifts it only a little, as the note below says."""
+
+# What the seeker is doing shifts the pauses a little, never the voice. Off-topic replies never
+# reach the director.
+VOICE_NOTES: dict[Intent, str] = {
     "teaching": (
-        "The listener is being taught. The voice is calm and clear, and pauses let each "
-        "thought land before the next one arrives. Nothing is dramatic."
+        "The seeker asked about the teachings or the nature of things. This is the usual "
+        "rhythm: a short pause where the explanation turns, a long pause before a closing "
+        "question."
     ),
     "practice": (
-        "The listener is being guided in the practice, now. The voice is intimate: the guide "
-        "is in the room with them, not giving a lecture."
+        "The seeker is being guided in the practice, or is answering the guide's question. "
+        "When the answer asks them to look at something or try it now, a short pause after "
+        "it gives them the moment to do so."
     ),
     "struggle": (
-        "The listener is carrying something heavy. The voice is soft and slow, and nothing is "
-        "rushed."
+        "The seeker is sharing a difficulty. Keep the usual rhythm: the voice is already "
+        "steady and unhurried, and that steadiness is what helps, so add no silences for the "
+        "weight of what they said. A short pause after the sentence that meets them can let "
+        "it land."
     ),
     "definition": (
-        "The listener asked a factual question, not for a pointing. Pauses are shorter and "
-        "the delivery is straighter."
+        "The seeker asked what a term means. The meaning reads straight through, with fewer "
+        "pauses than usual; a closing question, if there is one, still has its pause."
     ),
     "social": (
-        "The listener is greeting, thanking or saying goodbye. The voice is warm and "
-        "natural. There are no long pauses and nothing is solemn."
+        "The seeker is greeting, thanking or saying goodbye. Read it through as it would be "
+        "said, with no long pause."
     ),
     "crisis": (
-        "The listener may be in danger. The voice is calm but grounded, clear and close. "
-        "There is no drama and no spirituality."
+        "The seeker may be in danger. Every word must reach them clearly: no long pause and "
+        "no breath, and a short pause only where it helps them take in what to do."
     ),
 }
 
 
 def voice_director_prompt(intent: Intent) -> str:
-    """The system prompt for the voice director: its task, then the experience for the intent."""
-    return f"{VOICE_DIRECTOR}\n\nThe experience for this answer: {VOICE_EXPERIENCES[intent]}"
+    """The system prompt for the voice director: its task, then the note for the intent."""
+    return f"{VOICE_DIRECTOR}\n\nThe note for this answer: {VOICE_NOTES[intent]}"
