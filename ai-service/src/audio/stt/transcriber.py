@@ -19,8 +19,7 @@ class Transcriber:
     """
     Turns a recording into text with Whisper. Instantiate once at startup.
 
-    The recording is sent straight from memory and never written to disk, so there is no file to
-    delete afterwards. The prompt holds the Sanskrit terms Whisper would otherwise mishear.
+    The recording is sent straight from memory and never written to disk. The prompt holds the Sanskrit terms Whisper could mishear.
     """
 
     def __init__(self, client: OpenAI, prompt: str) -> None:

@@ -13,11 +13,6 @@ NON_WORD = re.compile(r"[^\w-]+")
 def extract_term(entry: str) -> str | None:
     """
     Return the Sanskrit term an entry defines, lowercased, or None when the entry is not a term.
-
-    The Talks glossary is one line per term, "term: definition". The Be As You Are glossary is
-    two lines per entry and ingestion misaligned them (half of it is the book's index), so a
-    multi-line entry yields nothing. A variant spelling in brackets is dropped: "tapas (tapasya)"
-    gives "tapas".
     """
     if "\n" in entry or ":" not in entry:
         return None
@@ -30,9 +25,6 @@ def extract_term(entry: str) -> str | None:
 def _count_uses(terms: set[str], texts: Iterable[str]) -> Counter[str]:
     """
     Count how many times each term appears in the texts, as whole words.
-
-    Every run of words as long as a term is looked up in the set of terms, one text at a time so
-    that a phrase never runs across two chunks.
     """
     lengths = {len(term.split()) for term in terms}
     counts: Counter[str] = Counter()
@@ -49,9 +41,6 @@ def _count_uses(terms: set[str], texts: Iterable[str]) -> Counter[str]:
 def rank_terms(entries: Iterable[str], texts: Iterable[str]) -> list[str]:
     """
     Order the glossary terms by how often the texts use them, most used first.
-
-    Terms the texts never use are dropped: they are not what a seeker will say, and this also
-    removes entries that only look like terms. Ties keep alphabetical order.
     """
     terms = {term for term in map(extract_term, entries) if term}
     counts = _count_uses(terms, texts)
