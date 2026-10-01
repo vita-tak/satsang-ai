@@ -197,7 +197,7 @@
   /*
    * When an answer ends on a question for the seeker, set it apart, with the ember point in the
    * margin. Answers that end on a statement, an instruction or one of his quotes come to rest as
-   * they are (page.tsx marks question endings with data-ends-on-question).
+   * they are (components/conversation/answer.tsx marks question endings with data-ends-on-question).
    */
   .answer[data-ends-on-question] > p:last-child:not(:first-child) {
     position: relative;
