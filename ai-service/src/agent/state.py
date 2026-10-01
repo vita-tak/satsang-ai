@@ -1,6 +1,8 @@
 from typing import Literal, Optional
 from langgraph.graph import MessagesState
 
+from src.audio.tts.script import VoiceScript
+
 # How the guide answers, chosen by the seeker. The mode never influences classification.
 Mode = Literal["satsang", "teachings", "ramana", "self_inquiry"]
 
@@ -19,3 +21,4 @@ class SatsangState(MessagesState):
     intent: Optional[Intent] = None
     search_query: Optional[str] = None
     mode: Mode = "satsang"
+    voice_script: Optional[VoiceScript] = None

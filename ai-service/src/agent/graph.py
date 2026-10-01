@@ -1,9 +1,13 @@
+import anthropic
 from langgraph.graph import StateGraph, START, END
 
 from src.agent.state import SatsangState
 from src.agent.nodes.classify import classify_intent_node
 from src.agent.nodes.retrieve import make_retrieve_node
 from src.agent.nodes.generate import generate_node, generate_direct_node, decline_node
+from src.agent.nodes.tts import make_tts_node
+from src.agent.nodes.voice_director import make_voice_director_node
+from src.audio.tts.speaker import Speaker
 from src.rag.retriever import Retriever
 
 
@@ -61,5 +65,35 @@ def build_graph(retriever: Retriever):
     graph.add_edge("generate", END)
     graph.add_edge("generate_direct", END)
     graph.add_edge("decline", END)
+
+    return graph.compile()
+
+
+def route_speech(state: SatsangState) -> str:
+    """The fixed decline message is spoken as it stands, so it skips the voice director."""
+    return "tts" if state["intent"] == "off_topic" else "voice_director"
+
+
+def build_speech_graph(anthropic_client: anthropic.Anthropic, speaker: Speaker):
+    """
+    Build the graph that speaks an answer that was already delivered as text.
+
+    It runs after /chat, from /speak, so the seeker reads the text at once and the audio
+    follows; speaking takes seconds and the text should not wait for it.
+
+    Flow:
+        off_topic (the fixed decline message)  -> tts
+        every other intent                     -> voice_director -> tts
+    """
+    graph = StateGraph(SatsangState)
+
+    graph.add_node("voice_director", make_voice_director_node(anthropic_client))
+    graph.add_node("tts", make_tts_node(speaker))
+
+    graph.add_conditional_edges(
+        START, route_speech, {"voice_director": "voice_director", "tts": "tts"}
+    )
+    graph.add_edge("voice_director", "tts")
+    graph.add_edge("tts", END)
 
     return graph.compile()
