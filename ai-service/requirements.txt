@@ -20,7 +20,7 @@ uvicorn[standard]==0.30.0
 python-multipart==0.0.9
 
 # Utilities
-pydantic==2.8.0
+pydantic>=2.12.5
 python-dotenv==1.2.3
 httpx>=0.28.1
 
