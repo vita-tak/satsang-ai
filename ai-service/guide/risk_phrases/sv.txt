@@ -1,0 +1,55 @@
+# Keyword safety net, Swedish. Seed list for the owner's and the clinical review.
+# One phrase per line. A phrase matches as whole words, ignoring case and apostrophes. Any match
+# sends the message down the crisis path, whatever the classifier said. Lines starting with # are
+# comments.
+
+# Suicidal thoughts and self-harm
+ta livet av mig
+tar livet av mig
+ta mitt liv
+avsluta mitt liv
+göra slut på mig
+självmord
+självmordstankar
+suicid
+vill dö
+vill bara dö
+vill inte leva
+orkar inte leva
+vill inte finnas
+vill inte finnas kvar
+vill inte vara kvar
+bättre om jag var död
+bättre utan mig
+vill inte vakna
+ingen mening att leva
+orkar inte mer
+skada mig själv
+skära mig
+hänga mig
+överdos
+
+# Medical emergency
+kan inte andas
+ont i bröstet
+tog för många tabletter
+tagit för många tabletter
+
+# Danger to others or a threat of violence
+döda honom
+döda henne
+döda någon
+skada någon
+
+# Abuse or violence against the person
+han slår mig
+hon slår mig
+hotar att döda mig
+
+# Loss of contact with reality
+hör röster
+rösterna säger
+
+# Acute panic
+har en panikattack
+kan inte sluta skaka

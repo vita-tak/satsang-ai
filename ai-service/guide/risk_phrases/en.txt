@@ -1,0 +1,74 @@
+# Keyword safety net, English. Seed list for the owner's and the clinical review.
+# One phrase per line. A phrase matches as whole words, ignoring case and apostrophes, so
+# "don't" also matches "dont" and "don’t". Any match sends the message down the crisis path,
+# whatever the classifier said. Lines starting with # are comments.
+
+# Suicidal thoughts and self-harm
+kill myself
+killing myself
+end my life
+ending my life
+end it all
+take my own life
+taking my own life
+take my life
+suicide
+suicidal
+want to die
+wanna die
+wish i was dead
+wish i were dead
+better off dead
+better off without me
+don't want to live
+do not want to live
+don't want to be alive
+do not want to be alive
+don't want to be here anymore
+do not want to be here anymore
+don't want to wake up
+do not want to wake up
+no reason to live
+nothing to live for
+can't go on
+cannot go on
+hurt myself
+harm myself
+self-harm
+self harm
+cut myself
+cutting myself
+hang myself
+overdose
+
+# Medical emergency
+can't breathe
+cannot breathe
+chest pain
+took too many pills
+taken too many pills
+overdosed
+
+# Danger to others or a threat of violence
+kill him
+kill her
+kill them
+kill someone
+hurt someone
+hurt somebody
+
+# Abuse or violence against the person
+he hits me
+she hits me
+beats me
+threatened to kill me
+going to hurt me
+
+# Loss of contact with reality
+hearing voices
+the voices tell me
+voices are telling me
+
+# Acute panic
+having a panic attack
+can't stop shaking
