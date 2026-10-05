@@ -1,10 +1,10 @@
 # Satsang AI
 
-A contemplative chat interface for self-inquiry in the tradition of Ramana Maharshi.
+A contemplative chat interface for self-inquiry.
 
 ## What it does
 
-Ask a question about the teachings, describe something you're struggling with, or write a longer letter about your practice. The system classifies what your message is doing and routes it accordingly: RAG-grounded answers from the source texts, direct guidance in Self-inquiry mode, precise definitions for Sanskrit terms, and a plain, caring reply when a message suggests risk of harm. You choose how the guide answers through one of four response modes.
+Bring what is on your mind, ask about the practice or an idea, or write a longer letter. A classifier reads each message first for any sign of risk, which always takes a careful crisis reply, and then picks how the guide answers: pointing you back to your own experience, explaining an idea in plain words, or simply answering a greeting. Retrieved passages from the source texts are background only: the guide speaks in its own voice and never quotes or names a teacher, text or tradition.
 
 ## Tech stack
 
@@ -18,7 +18,7 @@ Ask a question about the teachings, describe something you're struggling with, o
 | Vector database | ChromaDB                           |
 | Keyword search  | BM25 via rank-bm25                 |
 | Re-ranking      | sentence-transformers CrossEncoder |
-| Speech-to-text  | Web Speech API                     |
+| Speech-to-text  | OpenAI Whisper                     |
 
 ## Project structure
 
@@ -67,9 +67,7 @@ Open `http://localhost:3000`.
 ### POST /chat
 
 ```json
-{ "message": "Who am I?", "session_id": null, "mode": "satsang" }
+{ "message": "Who am I?", "session_id": null }
 ```
-
-`mode` is optional: `satsang` (default), `teachings`, `self_inquiry`, or `ramana`.
 
 Pass `session_id` back on subsequent requests to maintain conversation history.
