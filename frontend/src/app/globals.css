@@ -92,8 +92,8 @@
 
   /*
    * Keeps focused content clear of the sticky composer when the browser scrolls it into view. Set on
-   * the content instead of as scroll padding on the page, so focusing the composer or the mode
-   * toggle, which are always in view, never scrolls the page and never hides the pinned question.
+   * the content instead of as scroll padding on the page, so focusing the composer, which is
+   * always in view, never scrolls the page and never hides the pinned question.
    */
   main * {
     scroll-margin-bottom: 10rem;
