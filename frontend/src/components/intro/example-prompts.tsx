@@ -1,31 +1,29 @@
 import { motion } from "framer-motion";
-import { MODE_PROMPT_SETS } from "@/components/intro/prompt-sets";
-import type { ResponseMode } from "@/lib/mode";
+import { PROMPT_SETS } from "@/components/intro/prompt-sets";
 import { EASE_BREATH } from "@/lib/motion";
 
 interface ExamplePromptsProps {
-  mode: ResponseMode;
   promptSetIndex: number;
   onChoose: (prompt: string) => void;
   onRotate: () => void;
 }
 
-export function ExamplePrompts({ mode, promptSetIndex, onChoose, onRotate }: ExamplePromptsProps) {
+export function ExamplePrompts({ promptSetIndex, onChoose, onRotate }: ExamplePromptsProps) {
   return (
     <>
       <div className="flex items-center justify-between">
         <p className="font-serif text-note text-ink-faint italic">Or begin with</p>
         <RotatePromptsButton onClick={onRotate} />
       </div>
-      {/* Keyed by mode and set, so a new mode's questions or a rotated set fade in together. */}
+      {/* Keyed by set, so a rotated set's questions fade in together. */}
       <motion.ul
-        key={`${mode}-${promptSetIndex}`}
+        key={promptSetIndex}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4, ease: EASE_BREATH }}
         className="mt-2"
       >
-        {MODE_PROMPT_SETS[mode][promptSetIndex].map((prompt) => (
+        {PROMPT_SETS[promptSetIndex].map((prompt) => (
           <li key={prompt}>
             <PromptRow prompt={prompt} onChoose={onChoose} />
           </li>
