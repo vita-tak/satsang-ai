@@ -1,72 +1,88 @@
+import re
+from typing import TYPE_CHECKING
+
 import anthropic
 from langgraph.graph import StateGraph, START, END
+from langgraph.graph.state import CompiledStateGraph
 
-from src.agent.state import SatsangState
-from src.agent.nodes.classify import classify_intent_node
+from src.agent.crisis_lines import CrisisLine
+from src.agent.nodes.classify import make_classify_node
+from src.agent.nodes.generate import decline_node, make_generate_node
 from src.agent.nodes.retrieve import make_retrieve_node
-from src.agent.nodes.generate import generate_node, generate_direct_node, decline_node
 from src.agent.nodes.tts import make_tts_node
 from src.agent.nodes.voice_director import make_voice_director_node
+from src.agent.state import GuideReply, GuideState, SatsangState
 from src.audio.tts.speaker import Speaker
-from src.rag.retriever import Retriever
+
+if TYPE_CHECKING:
+    # Imported for the annotation only: the real module loads ChromaDB.
+    from src.rag.retriever import Retriever
 
 
-def route_after_classify(state: SatsangState) -> str:
+def route_after_classify(state: GuideState) -> str:
     """
     Choose the branch for a classified message.
 
-    Off-topic messages are declined. Social and crisis answers need no passages in any mode,
-    and neither does Self-inquiry mode, which quotes nothing; definitions always look up
-    the texts. Everything else is answered from retrieved passages.
+    Any risk comes first and goes to the crisis reply, even when the message also looks
+    off-topic or social. Off-topic messages get the fixed decline. Only the pointing and
+    explanatory registers draw on retrieved passages.
     """
-    intent = state["intent"]
-    if intent == "off_topic":
+    if state["risk"] != "none":
+        return "generate"
+    if state["register"] == "off_topic":
         return "decline"
-    if intent in ("social", "crisis"):
-        return "generate_direct"
-    if state["mode"] == "self_inquiry" and intent != "definition":
-        return "generate_direct"
+    if state["register"] == "social":
+        return "generate"
     return "retrieve"
 
 
-def build_graph(retriever: Retriever):
+def build_graph(
+    retriever: "Retriever",
+    client: anthropic.Anthropic,
+    crisis_lines: list[CrisisLine],
+    risk_patterns: dict[str, re.Pattern[str]],
+) -> CompiledStateGraph:
     """
-    Build the LangGraph agent with intent- and mode-based routing.
+    Build the guide's graph: one conversation mode, with the register and the risk decided for
+    each message.
 
     Flow:
-        classify_intent (sees the guide's previous reply, writes a search query)
-            off_topic                                        -> decline
-            social, crisis                                   -> generate_direct
-            teaching / practice / struggle in self_inquiry   -> generate_direct
-            everything else, and definition in every mode    -> retrieve -> generate
+        classify (risk, register, language, search query; the keyword net may raise the risk)
+            any risk                   -> generate (crisis: part 5b only)
+            off_topic                  -> decline (fixed sentence, no model call)
+            social                     -> generate
+            pointing, explanatory      -> retrieve -> generate
 
-    The system prompt for each answer comes from prompts.system_prompt(mode, intent).
+    The parts each generation call gets come from the assembly table in prompts.py.
     """
-    graph = StateGraph(SatsangState)
+    graph = StateGraph(GuideState)
 
-    graph.add_node("classify_intent", classify_intent_node)
+    graph.add_node("classify", make_classify_node(client, risk_patterns))
     graph.add_node("retrieve", make_retrieve_node(retriever))
-    graph.add_node("generate", generate_node)
-    graph.add_node("generate_direct", generate_direct_node)
+    graph.add_node("generate", make_generate_node(client, crisis_lines))
     graph.add_node("decline", decline_node)
 
-    graph.add_edge(START, "classify_intent")
+    graph.add_edge(START, "classify")
     graph.add_conditional_edges(
-        "classify_intent",
+        "classify",
         route_after_classify,
-        {
-            "decline": "decline",
-            "generate_direct": "generate_direct",
-            "retrieve": "retrieve",
-        },
+        {"generate": "generate", "decline": "decline", "retrieve": "retrieve"},
     )
     graph.add_edge("retrieve", "generate")
-
     graph.add_edge("generate", END)
-    graph.add_edge("generate_direct", END)
     graph.add_edge("decline", END)
 
     return graph.compile()
+
+
+def guide_reply(state: GuideState) -> GuideReply:
+    """The output contract of one run of the guide graph."""
+    return GuideReply(
+        text=state["messages"][-1].content,
+        register=state["register"],
+        risk=state["risk"],
+        direction=state.get("direction"),
+    )
 
 
 def route_speech(state: SatsangState) -> str:
