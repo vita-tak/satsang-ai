@@ -1,3 +1,6 @@
 # Parsing
 pymupdf==1.28.2
 # unstructured[html]==0.15.0
+
+# Tests
+pytest==9.1.1
