@@ -17,7 +17,7 @@ const mukta = Mukta({
 
 export const metadata: Metadata = {
   title: "Satsang AI",
-  description: "An AI guide to self-inquiry in the tradition of Ramana Maharshi.",
+  description: "An AI guide to self-inquiry.",
 };
 
 export const viewport: Viewport = {
