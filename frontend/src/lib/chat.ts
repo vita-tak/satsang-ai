@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { ResponseMode } from "@/lib/mode";
 import { readSpokenAnswer } from "@/lib/speech";
 import type { Speech } from "@/lib/speech";
 import type { ChatMessage, ChatRequest, ChatResponse } from "@/types/chat";
@@ -16,7 +15,7 @@ export interface Chat {
   exchanges: Exchange[];
   isLoading: boolean;
   error: string | null;
-  send: (text: string, mode: ResponseMode) => Promise<void>;
+  send: (text: string) => Promise<void>;
 }
 
 function toExchanges(messages: ChatMessage[]): Exchange[] {
@@ -67,7 +66,7 @@ export function useChat(speech: Speech): Chat {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function send(text: string, mode: ResponseMode) {
+  async function send(text: string) {
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     setIsLoading(true);
     setError(null);
@@ -82,7 +81,7 @@ export function useChat(speech: Speech): Chat {
     }
 
     try {
-      const requestBody: ChatRequest = { message: text, session_id: sessionId, mode };
+      const requestBody: ChatRequest = { message: text, session_id: sessionId };
       if (speech.isOn) {
         await receiveSpoken(requestBody, speech, showAnswer);
       } else {
