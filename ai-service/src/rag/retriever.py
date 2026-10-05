@@ -1,5 +1,4 @@
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 
 import chromadb
 from openai import OpenAI
@@ -14,18 +13,10 @@ from src.config import (
     RERANK_CANDIDATES,
     TOP_K,
 )
+from src.rag.chunk import RetrievedChunk
 
 CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-TinyBERT-L-2-v2"
 RRF_K = 60
-
-
-@dataclass
-class RetrievedChunk:
-    text: str
-    reference: str
-    chunk_type: str
-    summary: str
-    score: float
 
 
 def _tokenize(text: str) -> list[str]:
