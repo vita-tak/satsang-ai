@@ -4,19 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion";
 import { Composer } from "@/components/composer/composer";
-import { ModeToggle } from "@/components/composer/mode-toggle";
 import { Conversation } from "@/components/conversation/conversation";
 import { Intro } from "@/components/intro/intro";
 import { advanceStoredPromptSetIndex } from "@/components/intro/prompt-sets";
 import { useChat } from "@/lib/chat";
-import { DEFAULT_MODE, readStoredMode, storeMode } from "@/lib/mode";
-import type { ResponseMode } from "@/lib/mode";
 import { BREATH, EASE_BREATH } from "@/lib/motion";
 import { useSpeech } from "@/lib/speech";
 import { isTouchScreen, viewHeightWithoutKeyboard } from "@/lib/touch";
 
 // The page under the header: the intro until the first question, then the conversation, with the
-// composer and the mode toggle moving from inline in the intro to pinned at the bottom.
+// composer moving from inline in the intro to pinned at the bottom.
 
 // Pinned to the top, a question keeps "Answering" in view only if it fits between its scroll
 // margins; the bottom margin leaves room for "Answering" above the composer and its fade.
@@ -28,7 +25,6 @@ function isTallerThanView(question: HTMLElement, viewHeight: number): boolean {
 
 export function Satsang() {
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState<ResponseMode>(DEFAULT_MODE);
   const [promptSetIndex, setPromptSetIndex] = useState(0);
   const [hasIntroLeft, setHasIntroLeft] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -42,12 +38,10 @@ export function Satsang() {
 
   useEffect(() => {
     // sessionStorage only exists in the browser, so this must run post-mount rather than in a lazy
-    // useState initializer, or server and client would render different modes. The intro is still
-    // fading in, so the switch from the default mode and its questions is never seen.
-    const storedMode = readStoredMode();
+    // useState initializer, or server and client would render different questions. The intro is
+    // still fading in, so the switch from the first set is never seen.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMode(storedMode);
-    setPromptSetIndex(advanceStoredPromptSetIndex(storedMode));
+    setPromptSetIndex(advanceStoredPromptSetIndex());
   }, []);
 
   useEffect(() => {
@@ -91,7 +85,7 @@ export function Satsang() {
     if (speech.isOn) {
       speech.prime();
     }
-    chat.send(trimmed, mode);
+    chat.send(trimmed);
   }
 
   function choosePrompt(prompt: string) {
@@ -99,14 +93,8 @@ export function Satsang() {
     inputRef.current?.focus();
   }
 
-  function chooseMode(nextMode: ResponseMode) {
-    setMode(nextMode);
-    storeMode(nextMode);
-    setPromptSetIndex(advanceStoredPromptSetIndex(nextMode));
-  }
-
   function rotatePrompts() {
-    setPromptSetIndex(advanceStoredPromptSetIndex(mode));
+    setPromptSetIndex(advanceStoredPromptSetIndex());
   }
 
   function rememberViewHeight() {
@@ -114,21 +102,18 @@ export function Satsang() {
     viewHeightBeforeKeyboardRef.current = window.innerHeight;
   }
 
-  // The mode toggle travels with the composer: inline in the intro, pinned to the bottom after.
+  // The composer is inline in the intro and pinned to the bottom after.
   const composer = (
-    <>
-      <Composer
-        value={input}
-        canSubmit={!chat.isLoading && input.trim() !== ""}
-        isSpeakerOn={speech.isOn}
-        inputRef={inputRef}
-        onToggleSpeaker={speech.toggle}
-        onChange={setInput}
-        onFocus={rememberViewHeight}
-        onSubmit={handleSubmit}
-      />
-      <ModeToggle mode={mode} isQuiet={hasIntroLeft} onChange={chooseMode} />
-    </>
+    <Composer
+      value={input}
+      canSubmit={!chat.isLoading && input.trim() !== ""}
+      isSpeakerOn={speech.isOn}
+      inputRef={inputRef}
+      onToggleSpeaker={speech.toggle}
+      onChange={setInput}
+      onFocus={rememberViewHeight}
+      onSubmit={handleSubmit}
+    />
   );
 
   return (
@@ -139,7 +124,6 @@ export function Satsang() {
             {exchanges.length === 0 ? (
               <Intro
                 key="intro"
-                mode={mode}
                 promptSetIndex={promptSetIndex}
                 onChoose={choosePrompt}
                 onRotate={rotatePrompts}
